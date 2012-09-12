@@ -1,0 +1,50 @@
+--- install-x86_64/include/gmp.h	2012-09-09 20:27:02.000000000 +0100
++++ install-universal/include/gmp.h	2012-09-09 20:29:08.000000000 +0100
+@@ -26,7 +26,8 @@
+ #endif
+ 
+ 
+-/* Instantiated by configure. */
++/* Instantiated by configure. 
++
+ #if ! defined (__GMP_WITHIN_CONFIGURE)
+ #define __GMP_BITS_PER_MP_LIMB             64
+ #define __GMP_HAVE_HOST_CPU_FAMILY_power   0
+@@ -34,6 +35,37 @@
+ #define GMP_LIMB_BITS                      64
+ #define GMP_NAIL_BITS                      0
+ #endif
++
++ * Edited as per http://gmplib.org/list-archives/gmp-discuss/2010-September/004312.html 
++ * ALBL - 9th Sep 2012
++ * */
++#if ! defined (__GMP_WITHIN_CONFIGURE)
++#if defined(__i386__)
++#define __GMP_HAVE_HOST_CPU_FAMILY_power   0
++#define __GMP_HAVE_HOST_CPU_FAMILY_powerpc 0
++#define GMP_LIMB_BITS                      32
++#define GMP_NAIL_BITS                      0
++#elif defined(__x86_64__)
++#define __GMP_HAVE_HOST_CPU_FAMILY_power   0
++#define __GMP_HAVE_HOST_CPU_FAMILY_powerpc 0
++#define GMP_LIMB_BITS                      64
++#define GMP_NAIL_BITS                      0
++#elif defined(__ppc__)
++#define __GMP_HAVE_HOST_CPU_FAMILY_power   0
++#define __GMP_HAVE_HOST_CPU_FAMILY_powerpc 1
++#define GMP_LIMB_BITS                      32
++#define GMP_NAIL_BITS                      0
++#elif defined(__powerpc64__)
++#define __GMP_HAVE_HOST_CPU_FAMILY_power   0
++#define __GMP_HAVE_HOST_CPU_FAMILY_powerpc 1
++#define GMP_LIMB_BITS                      64
++#define GMP_NAIL_BITS                      0
++#else
++#error Unsupported architecture
++#endif
++#endif
++
++
+ #define GMP_NUMB_BITS     (GMP_LIMB_BITS - GMP_NAIL_BITS)
+ #define GMP_NUMB_MASK     ((~ __GMP_CAST (mp_limb_t, 0)) >> GMP_NAIL_BITS)
+ #define GMP_NUMB_MAX      GMP_NUMB_MASK
