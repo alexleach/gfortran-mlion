@@ -253,9 +253,9 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
       DT=$BUILD_DIR/dst-$GCC_BUILD-$t
       # LLVM LOCAL Support for non /usr $PREFIX
       D=`echo $DT/$PREFIX/lib/gcc/$t-apple-darwin$DARWIN_VERS/$VERS`
-      mv $D/static/libgcc.a $D/libgcc_static.a || exit 17
-      mv $D/kext/libgcc.a $D/libcc_kext.a || exit 18
-      rm -r $D/static $D/kext || exit 19
+      mv $D/static/libgcc.a $D/libgcc_static.a || exit 1
+      mv $D/kext/libgcc.a $D/libcc_kext.a || exit 1
+      rm -r $D/static $D/kext || exit 1
       # glue together kext64 stuff
       if [ -e $D/kext64/libgcc.a ]; then
         libtool -static $D/{kext64/libgcc.a,libcc_kext.a} -o $D/libcc_kext1.a 2>&1 | grep -v 'has no symbols'
@@ -264,7 +264,7 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
       fi
     done
 
-    echo -e "Building the cross-hosted compilers for platforms: `echo $GCC_TARGETS | sed -e s/$GCC_BUILD// `" || exit 20
+    echo -e "Building the cross-hosted compilers for platforms: `echo $GCC_TARGETS | sed -e s/$GCC_BUILD// `" || exit 2
 
 
     # Build the cross-hosted compilers.
@@ -455,16 +455,41 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     libdir="$baselibdir/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS"
     lib64dir="$libdir/x86_64"
 
-    echo "Copying over static archives"
+    echo "Copying over native static archives"
     echo -e "----------------------------\n"
-    for f in `echo libgcc.a libgcc_eh.a libgcov.a libcc_kext.a libgcc_static.a libgfortranbegin.a libgfortran.a` ; do
+    for f in `echo libgcc.a libgcc_eh.a libgcov.a libgfortranbegin.a libgfortran.a` ; do
         if [ -f $baselibdir/$f -a -f $baselib64dir/$f ] ; then
-            lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f -create \
+            lipo -output $BUILT_PREFIX/lib/$f -create \
                 $baselibdir/$f $baselib64dir/$f || exit 1
 #            rm $baselibdir/$f $baselib64dir/$f
         elif [ -f $libdir/$f -a -f $lib64dir/$f ] ; then
             lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f -create \
                 $libdir/$f $lib64dir/$f || exit 1
+#            rm $libdir/$f $lib64dir/$f
+        else
+            echo "Don't have 64bit version of $f in $baselib64dir or $lib64dir !!"
+            cp -p $libdir/$f \
+                $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f || exit 1
+#            rm $libdir/$f
+        fi
+    done
+
+    ALTARCH=`echo $GCC_HOSTS | sed -e "s/$GCC_BUILD//" -e 's/ //g'`
+    echo -e "got this alternative arch: $ALTARCH\n"
+    crossbaselibdir="$BUILD_DIR/dst-$GCC_BUILD-$ALTARCH$PREFIX/lib"
+    #crosslib64dir="$BUILD_DIR/dst-$GCC_BUILD-$ALTARCH$PREFIX/lib/x86_64"
+    crosslibdir="$crossbaselibdir/gcc/$ALTARCH-apple-darwin$DARWIN_VERS/$VERS"
+    #crosslib64dir="$libdir/x86_64"
+    echo "Copying over crossed static archives"
+    echo -e "----------------------------\n"
+    for f in `echo libgcc_static.a` ; do
+        if [ -f $crossbaselibdir/$f -a -f $baselibdir/$f ] ; then
+            lipo -output $BUILT_PREFIX/lib/$f -create \
+                $crossbaselibdir/$f $baselibdir/$f || exit 1
+#            rm $baselibdir/$f $baselib64dir/$f
+        elif [ -f $crosslibdir/$f -a -f $libdir/$f ] ; then
+            lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f -create \
+                $libdir/$f $crosslibdir/$f || exit 1
 #            rm $libdir/$f $lib64dir/$f
         else
             echo "Don't have 64bit version of $f in $baselib64dir or $lib64dir !!"
@@ -495,6 +520,7 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     for f in $libbeginaltnames ; do ln -s $libbeginversion $f ; done
 
     # libgfortran is in $baselibdir
+    cd $BUILT_PREFIX/lib
     if [ -f $baselibdir/libgfortran.la ] ; then
         cp $baselibdir/libgfortran.la ./
         libdir="$baselibdir"
@@ -508,13 +534,12 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
         libgfortversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortran.la | sed -e s/^.*=\'// -e s/\'$//`"
     fi
     libgforts="$libdir/$libgfortversion $libgfortversion64"
-    echo running lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libgfortversion \
+    echo running lipo -output $BUILT_PREFIX/lib/$libgfortversion \
         -create $libgforts 
-    lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libgfortversion \
+    lipo -output $BUILT_PREFIX/lib/$libgfortversion \
         -create $libgforts || exit 1
     rm $libgforts
     for f in $libgfortaltnames ; do ln -s $libgfortversion $f ; done
-
 
 #    for t in $GCC_TARGETS ; do
 #      # LLVM LOCAL build_gcc bug with non-/usr $PREFIX
@@ -792,6 +817,11 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     find $BUILT_PREFIX -name \*.dSYM -print | xargs rm -r || exit 1
     chgrp -h -R staff $BUILT_PREFIX
     chgrp -R staff $BUILT_PREFIX
+
+    ## Need to clean up the libgmp.la and libmpfr.la files.
+
+    sed -e "s,^libdir=.*$,libdir=\\'${PREFIX}/lib\\'," -i '' "${BUILT_PREFIX}/lib/libgmp.la"
+    sed -e "s,^libdir=.*$,libdir=\\'${PREFIX}/lib\\'," -i '' "${BUILT_PREFIX}/lib/libmpfr.la"
 
     # Done!
     exit 0
