@@ -247,5 +247,4 @@ if [ ! -f make.checked ] ; then
 
 fi
 
-
-
+exit 0

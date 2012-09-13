@@ -61,7 +61,7 @@
             ARCHFLAGS="-arch i386" \
             FFLAGS="-arch i386" \
             ../configure --enable-werror --prefix=${BUILT32_PREFIX} --build=i686-apple-darwin11 --host=i386-apple-darwin11 \
-            || exit 1
+                || exit 1
 
         run make -j${N_MAKE}
         check
@@ -88,7 +88,7 @@
             ARCHFLAGS="-arch x86_64" \
             FFLAGS="-arch x86_64" \
             ../configure --enable-werror --prefix=${BUILT64_PREFIX} --build=i686-apple-darwin11 --host=x86_64-apple-darwin11 \
-            exit 1
+                || exit 1
 
         run make -j${N_MAKE}
         check
@@ -185,11 +185,8 @@
         echo "configured. Cleaning"
 
         make clean > /dev/null 2&>1 
-        echo "Cleaned. Building i386 binary"
         run make -j${N_MAKE}
-        echo "Built i386 binaries. Checking..."
         check
-        echo "Checked. Installing to ${BUILT_PREFIX}"
         run make install
     fi
     cd  ..
@@ -205,18 +202,20 @@
 
     if [ ! -e make.checked ] ; then
         echo "Configuring mpfr-x86_64"
+        echo "-----------------------"
         CFLAGS="-arch x86_64 -O2" \
             CPPFLAGS="-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/usr/include \
                       -I/usr/include \
-                      -I/usr/local/include" \
+                      -I$BUILT_PREFIX/include" \
             LDFLAGS="-arch x86_64 \
                      -O2 \
                      -L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/usr/lib \
                      -L/usr/lib \
-                     -L/usr/local/lib" \
+                     -L$BUILT_PREFIX/lib" \
             ARCHFLAGS="-arch x86_64" \
             FFLAGS="-arch x86_64" \
-            $SRC_DIR/configure --prefix="${BUILT64_PREFIX}" || exit 1
+            $SRC_DIR/configure --prefix="${BUILT64_PREFIX}" \
+                || exit 1
 
         make clean > /dev/null 2&>1 
         run make -j${N_MAKE}

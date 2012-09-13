@@ -10,15 +10,11 @@
 SRC_DIR="${PWD}/${LLVM_VERSION}"
 
 # Fake install prefixes.
-#BUILT32_PREFIX="${SRC_DIR}/install/i386/usr/local"
-#BUILT64_PREFIX="${SRC_DIR}/install/x86_64/usr/local"
 BUILT_PREFIX="${PWD}/install${PREFIX}"
 mkdir -p $BUILT_PREFIX  # $BUILT32_PREFIX $BUILT64_PREFIX 
 
 # Compiled object directory
 BUILD_DIR=${SRC_DIR}/build
-#BUILD32_DIR=${PWD}/build/i386
-#BUILD64_DIR=${PWD}/build/x86_64
 mkdir -p ${BUILD_DIR}
 
 # Debug symbol directory
@@ -66,10 +62,11 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     VERS=`cat $SRC_DIR/gcc/BASE-VER`
     MAJ_VERS=`echo $VERS | sed 's/\([0-9]*\.[0-9]*\)[.-].*/\1/'`
 
-    mv $SRC_DIR/libstdc++-v3 $SRC_DIR/libstdc++-v3.bak 2> /dev/null
+    #mv $SRC_DIR/libstdc++-v3 $SRC_DIR/libstdc++-v3.bak 2> /dev/null
 
     CFLAGS="-g -O2 ${RC_NONARCH_CFLAGS/-pipe/}"
-    CPPFLAGS="-I/usr/include -I/usr/include/c++/$VERS -I$BUILT_PREFIX/include"
+    CPPFLAGS="-I/usr/include -I$BUILT_PREFIX/include"
+    CXXFLAGS="-I/usr/include/c++/$VERS"
     LDFLAGS="-L/usr/lib -L$BUILT_PREFIX/lib"
 
     CONFIGFLAGS="--disable-checking \
@@ -88,7 +85,7 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     MAKEFLAGS="-j${N_MAKE} BUILD_LLVM_APPLE_STYLE=1"
     #MAKEFLAGS="BUILD_LLVM_APPLE_STYLE=1"
     # Build llvm-gcc in 'dylib mode'.
-    MAKEFLAGS="$MAKEFLAGS BUILD_LLVM_INTO_A_DYLIB=1"
+    MAKEFLAGS="$MAKEFLAGS BUILD_LLVM_INTO_A_DYLIB=1 VERBOSE=1"
     MAKEFLAGS="$MAKEFLAGS LLVM_VERSION_INFO=$LLVM_VERSION_VERSION"
 
     unset LANGUAGES
@@ -124,10 +121,10 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     # Also keep unset for cross compilers so that the cross built libraries are
     # comparable to the native built libraries.
     unset RC_DEBUG_OPTIONS
-    make $MAKEFLAGS CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 1
-    make $MAKEFLAGS html CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 1
+    make $MAKEFLAGS CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 2
+    make $MAKEFLAGS html CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 3
     make $MAKEFLAGS DESTDIR=$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD install-gcc install-target \
-      CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 1
+      CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 4
 
     # Now that we've built a native compiler, un-kludge these so that
     # subsequent cross-hosted compilers can be found normally.
@@ -137,8 +134,8 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     # Add the compiler we just built to the path, giving it appropriate names.
     # LLVM LOCAL begin Support for non /usr $PREFIX
     D=$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/bin
-    ln -f $D/llvm-gcc $D/gcc || exit 1
-    ln -f $D/gcc $D/$GCC_BUILD-apple-darwin$DARWIN_VERS-gcc || exit 1
+    ln -f $D/llvm-gcc $D/gcc || exit 5
+    ln -f $D/gcc $D/$GCC_BUILD-apple-darwin$DARWIN_VERS-gcc || exit 6
     PATH=$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/bin:$PATH
     # LLVM LOCAL end Support for non /usr $PREFIX
 
@@ -150,8 +147,8 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     # under names like 'i386-apple-darwin$DARWIN_VERS-ar'; so make them.
     # Annoyingly, ranlib changes behaviour depending on what you call it,
     # so we have to use a shell script for indirection, grrr.
-    rm -rf $BUILD_DIR/bin || exit 1
-    mkdir $BUILD_DIR/bin || exit 1
+    rm -rf $BUILD_DIR/bin || exit 7
+    mkdir $BUILD_DIR/bin || exit 8
     for prog in ar nm ranlib strip lipo ld ; do
       for t in `echo $GCC_TARGETS $GCC_HOSTS | tr ' ' '\n' | sort -u`; do
         P=$BUILD_DIR/bin/${t}-apple-darwin$DARWIN_VERS-${prog}
@@ -164,9 +161,9 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
           sdkoption="-sdk /"
 #        fi
         progpath=`xcrun $sdkoption -find $prog`
-        echo '#!/bin/sh' > $P || exit 1
-        echo 'exec '${progpath}' "$@"' >> $P || exit 1
-        chmod a+x $P || exit 1
+        echo '#!/bin/sh' > $P || exit 9
+        echo 'exec '${progpath}' "$@"' >> $P || exit 10
+        chmod a+x $P || exit 11
       done
     done
 
@@ -182,8 +179,8 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
         sdkoption="-sdk /"
 #      fi
       progpath=`xcrun $sdkoption -find as`
-      echo '#!/bin/sh' > $P || exit 1
-      echo 'for a; do case $a in -arch) exec '${progpath}' "$@";;  esac; done' >> $P || exit 1
+      echo '#!/bin/sh' > $P || exit 12
+      echo 'for a; do case $a in -arch) exec '${progpath}' "$@";;  esac; done' >> $P || exit 13
       echo 'exec '${progpath}' -arch '${t}' "$@"' >> $P || exit 1
       chmod a+x $P || exit 1
     done
@@ -199,6 +196,8 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
       CROSS_TARGETS="$GCC_HOSTS"
     fi
 
+    echo "Building cross-compilers for $CROSS_TARGETS"
+    echo "-------------------------------------------"
     # Build the cross-compilers, using [Xcode's compiler]
     for t in $CROSS_TARGETS ; do
      if [ $t != $GCC_BUILD ] ; then
@@ -221,8 +220,8 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
 #        else
           echo -e "\nConfiguring $t compiler\n-----------------------\n"
 #          CC="clang" CXX="clang++" \
-          CPPFLAGS="$CPPFLAGS" CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" \
-              $SRC_DIR/configure $T_CONFIGFLAGS $NON_ARM_CONFIGFLAGS || exit 1
+          #CPPFLAGS="$CPPFLAGS" CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" \
+          $SRC_DIR/configure $T_CONFIGFLAGS $NON_ARM_CONFIGFLAGS || exit 14
         fi
         # APPLE LOCAL end ARM ARM_CONFIGFLAGS
 #       fi
@@ -237,11 +236,11 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
 #       fi
        echo -e "\nBuilding $t compiler\n--------------------\n"
        make $MAKEFLAGS all CFLAGS="$CFLAGS $DEFAULT_TARGET" \
-         CXXFLAGS="$CFLAGS $DEFAULT_TARGET" || exit 1
+         CXXFLAGS="$CFLAGS $DEFAULT_TARGET" || exit 15
        echo -e "\nInstalling $t compiler\n----------------------\n"
        make $MAKEFLAGS DESTDIR=$BUILD_DIR/dst-$GCC_BUILD-$t install-gcc install-target \
          CFLAGS="$CFLAGS $DEFAULT_TARGET" \
-         CXXFLAGS="$CFLAGS $DEFAULT_TARGET" || exit 1
+         CXXFLAGS="$CFLAGS $DEFAULT_TARGET" || exit 16
 
        # Add the compiler we just built to the path.
        # LLVM LOCAL Support for non /usr $PREFIX
@@ -254,9 +253,9 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
       DT=$BUILD_DIR/dst-$GCC_BUILD-$t
       # LLVM LOCAL Support for non /usr $PREFIX
       D=`echo $DT/$PREFIX/lib/gcc/$t-apple-darwin$DARWIN_VERS/$VERS`
-      mv $D/static/libgcc.a $D/libgcc_static.a || exit 1
-      mv $D/kext/libgcc.a $D/libcc_kext.a || exit 1
-      rm -r $D/static $D/kext || exit 1
+      mv $D/static/libgcc.a $D/libgcc_static.a || exit 17
+      mv $D/kext/libgcc.a $D/libcc_kext.a || exit 18
+      rm -r $D/static $D/kext || exit 19
       # glue together kext64 stuff
       if [ -e $D/kext64/libgcc.a ]; then
         libtool -static $D/{kext64/libgcc.a,libcc_kext.a} -o $D/libcc_kext1.a 2>&1 | grep -v 'has no symbols'
@@ -265,11 +264,11 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
       fi
     done
 
-    echo -e "Building the cross-hosted compilers for platforms: `echo $GCC_TARGETS | sed -e s/$GCC_BUILD// `" || exit 1
+    echo -e "Building the cross-hosted compilers for platforms: `echo $GCC_TARGETS | sed -e s/$GCC_BUILD// `" || exit 20
 
 
     # Build the cross-hosted compilers.
-    for h in $GCC_TARGETS ; do
+    for h in $GCC_HOSTS ; do
       if [ $h != $GCC_BUILD ] ; then
         for t in $GCC_TARGETS ; do
           mkdir -p $BUILD_DIR/obj-$h-$t $BUILD_DIR/dst-$h-$t || exit 1
@@ -294,9 +293,10 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
 #            else
               T_CONFIGFLAGS="$T_CONFIGFLAGS $NON_ARM_CONFIGFLAGS"
 #            fi
-          CC="gcc" CXX="g++" \
-            CPPFLAGS="$CPPFLAGS" CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" \
-            $SRC_DIR/configure $T_CONFIGFLAGS || exit 1
+#          CC="gcc" CXX="g++" \
+#            CPPFLAGS="$CPPFLAGS" CFLAGS="$CFLAGS" \
+            CFLAGS="-I/usr/include/c++/$VERS $CFLAGS" \
+            $SRC_DIR/configure $T_CONFIGFLAGS || exit 20
         # APPLE LOCAL end ARM ARM_CONFIGFLAGS
           fi
 
@@ -317,17 +317,18 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
           if [ $h = $t ] ; then
               echo "Making all for DESTDIR: $BUILD_DIR/dst-$h-$t"
               echo -e "--------------------------------------------\n"
-              make $MAKEFLAGS all CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 1
+              make $MAKEFLAGS all CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 21
               make $MAKEFLAGS DESTDIR=$BUILD_DIR/dst-$h-$t install-gcc install-target \
-                  CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 1
+                  CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 22
           else
               echo "Making all-gcc for $BUILD_DIR/dst-$h-$t"
               echo -e "--------------------------------------------\n"
-              make $MAKEFLAGS all-gcc CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 1
+              make $MAKEFLAGS all-gcc CFLAGS="$CFLAGS -I/usr/include/c++/$VERS" CXXFLAGS="$CFLAGS" \
+                  || echo -e "Failed program:- (retcode $?)\nPATH=$PATH\n\n$PWD/make all-gcc $MAKEFLAGS CFLAGS=$CFLAGS -I/usr/include/c++/$VERS CXXFLAGS=$CFLAGS"
               echo "Done all-gcc for $BUILD_DIR/dst-$h-$t"
               echo -e "--------------------------------------------\n"
               make $MAKEFLAGS DESTDIR=$BUILD_DIR/dst-$h-$t install-gcc \
-                  CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 1
+                  CFLAGS="$CFLAGS" CXXFLAGS="-I/usr/include/c++/$VERS $CFLAGS" || exit 24
           fi
 
 #          if [ $t = 'arm' ] ; then
@@ -341,7 +342,7 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
 
     ########################################
     # Construct the actual destination root, by copying stuff from
-    # $BUILD_DIR/dst-* to $DEST_DIR, with occasional 'lipo' commands.
+    # $BUILD_DIR/dst-* to $BUILT_PREFIX, with occasional 'lipo' commands.
 
     echo Constructing destination root, $BUILD_DIR/dst-* to $BUILT_PREFIX, with occasional 'lipo' commands.
     echo -e "---------------------------------------------------------------------------------------------\n"
@@ -350,39 +351,30 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
 
     # Manual pages
     mkdir -p ${BUILT_PREFIX}/share || exit 1
-    cp -Rp $BUILD_DIR/dst-$GCC_BUILD-*$PREFIX/share/man $BUILT_PREFIX/share/ \
+    cp -Rp $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/share/man $BUILT_PREFIX/share/ \
       || exit 1
 
     # exclude fsf-funding.7 gfdl.7 gpl.7 as they are currently built in
     # the gcc project
-    rm -rf $BUILT_PREFIX/share/man/man7
+    #rm -rf $BUILT_PREFIX/share/man/man7
 
     # libexec # 
-    # As we didn't build the native compiler, we don't have dst-$GCC_BUILD-$GCC_BUILD directories.
-    # Dirty fix - have been replacing with asterisks. # 
     cd $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/libexec/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS \
       || exit 1
     LIBEXEC_FILES=`find . -type f -print || exit 1`
     LIBEXEC_DIRS=`find . -type d -print || exit 1`
     cd $BUILT_PREFIX || exit 1
     for t in $GCC_TARGETS ; do
-      if [ "$t" = "$GCC_BUILD" ] ; then
-          continue
-      fi
       DL=/libexec/gcc/$t-apple-darwin$DARWIN_VERS/$VERS
       for d in $LIBEXEC_DIRS ; do
         mkdir -p .$DL/$d || exit 1
       done
       for f in $LIBEXEC_FILES ; do
         # LLVM LOCAL
-        if file $BUILD_DIR/dst-$GCC_BUILD-$t$DL/$f | grep -q -E 'Mach-O (executable|dynamically linked shared library)' ; then
-          echo lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$DL/$f || exit 1
-          lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$DL/$f || exit 1
-        elif file $BUILD_DIR/dst-$t-$GCC_BUILD$DL/$f | grep -q -E 'Mach-O (executable|dynamically linked shared library)' ; then
-          echo lipo -output .$DL/$f -create $BUILD_DIR/dst-$t-$GCC_BUILD$DL/$f || exit 1
-          lipo -output .$DL/$f -create $BUILD_DIR/dst-$t-$GCC_BUILD$DL/$f || exit 1
+        if file $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f | grep -q -E 'Mach-O (executable|dynamically linked shared library)' ; then
+          lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f || exit 1
         else
-          cp -pv $BUILD_DIR/dst-$GCC_BUILD-$t$DL/$f .$DL/$f || exit 1
+          cp -pv $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f .$DL/$f || exit 1
         fi
       done
       # LLVM LOCAL begin fix broken link
@@ -393,17 +385,13 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
       # LLVM LOCAL end fix broken link
     done
 
-
-
     ## WHERE ARE THESE FILES??????? (llvm-cpp, cpp-4.2.1 )
 
     # bin
     # The native drivers ('native' is different in different architectures).
     # LLVM LOCAL begin
     mkdir -p $BUILT_PREFIX/bin
-    echo ls $BUILD_DIR/dst-*$PREFIX/bin/{llvm-cpp,cpp-$MAJ_VERS} 
     cpp_files=`ls $BUILD_DIR/dst-*$PREFIX/bin/{llvm-cpp,cpp-$MAJ_VERS} 2>/dev/null`
-
     echo lipo -output $BUILT_PREFIX/bin/llvm-cpp-$MAJ_VERS -create $cpp_files || exit 1
     lipo -output $BUILT_PREFIX/bin/llvm-cpp-$MAJ_VERS -create $cpp_files || exit 1
     # LLVM LOCAL end
@@ -412,29 +400,52 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
 
     # gcov, which is special only because it gets built multiple times and lipo
     # will complain if we try to add two architectures into the same output.
-#    TARG0=`echo $GCC_TARGETS | cut -d ' ' -f 1`
-#    lipo -output .$PREFIX/bin/gcov-$MAJ_VERS -create \
-#      $BUILD_DIR/dst-*-$TARG0$PREFIX/bin/*gcov* || exit 1
-#    # The fully-named drivers, which have the same target on every host.
-#    for t in $GCC_TARGETS ; do
-#      # LLVM LOCAL build_gcc bug with non-/usr $PREFIX
-#      lipo -output .$PREFIX/bin/$t-apple-darwin$DARWIN_VERS-llvm-gcc-$MAJ_VERS -create \
-#        $BUILD_DIR/dst-*-$t/$PREFIX/bin/$t-apple-darwin$DARWIN_VERS-gcc-$VERS || exit 1
-#      # LLVM LOCAL build_gcc bug with non-/usr $PREFIX
-#      lipo -output .$PREFIX/bin/$t-apple-darwin$DARWIN_VERS-llvm-g++-$MAJ_VERS -create \
-#        $BUILD_DIR/dst-*-$t/$PREFIX/bin/$t-apple-darwin$DARWIN_VERS-*g++* || exit 1
-#    done
+    TARG0=`echo $GCC_TARGETS | cut -d ' ' -f 1`
+    lipo -output ./bin/gcov-$MAJ_VERS -create \
+      $BUILD_DIR/dst-*-$TARG0$PREFIX/bin/*gcov* || exit 1
+
+    # The fully-named drivers, which have the same target on every host.
+    for t in $GCC_TARGETS ; do
+      # LLVM LOCAL build_gcc bug with non-/usr $PREFIX
+      lipo -output ./bin/$t-apple-darwin$DARWIN_VERS-llvm-gcc-$MAJ_VERS -create \
+        $BUILD_DIR/dst-*-$t/$PREFIX/bin/$t-apple-darwin$DARWIN_VERS-gcc-$VERS || exit 1
+      # LLVM LOCAL build_gcc bug with non-/usr $PREFIX
+      lipo -output ./bin/$t-apple-darwin$DARWIN_VERS-llvm-g++-$MAJ_VERS -create \
+        $BUILD_DIR/dst-*-$t/$PREFIX/bin/$t-apple-darwin$DARWIN_VERS-*g++* || exit 1
+      # ALBL build_gfortran
+      lipo -output ./bin/$t-apple-darwin$DARWIN_VERS-llvm-gfortran-$MAJ_VERS -create \
+        $BUILD_DIR/dst-*-$t/$PREFIX/bin/$t-apple-darwin$DARWIN_VERS-*gfortran* || exit 1
+    done
 
     # lib
     echo "Copying over lib/"
     echo -e "-----------------\n"
     mkdir -p ./lib/gcc || exit 1
+    # Merge libgfortran and libgfortranbegin with lipo, then delete individuals.
+    libdir="$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS"
+    libversion="$libdir/`grep dlname $libdir/libgfortran.la | sed -e s/^.*=\'// -e s/\'$//`"
+    libbeginversion="$libdir/`grep dlname $libdir/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
+
+    libfortranaltnames="`grep library_names $libdir/libgfortran.la | sed -e s/^.*=\'// -e s/\'$// -e s/$libversion//`"
+    libbeginaltnames="`grep library_names $libdir/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$// -e s/$libbeginversion//`"
+
+    if [ -d $libdir/x86_64 ** -a -f $libdir/x86_64/libgfortran.la ] ; then
+        libversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortran.la | sed -e s/^.*=\'// -e s/\'$//`"
+        libbeginversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
+    fi  
+    libgfortrans="$libversion $libversion64"
+    libgfortranbegins="$libbeginversion $libbeginversion64"
+
+    lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS -create \
+        $libgfortrans || exit 1
+
+    lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS -create \
+        $libgfortranbegins || exit 1
+
     for t in $GCC_TARGETS ; do
       # LLVM LOCAL build_gcc bug with non-/usr $PREFIX
-      if [ $t != $GCC_BUILD ] ; then
-        cp -vRp $BUILD_DIR/dst-$GCC_BUILD-$t/$PREFIX/lib/gcc/$t-apple-darwin$DARWIN_VERS \
-          ./lib/gcc || exit 1
-      fi
+      cp -vRp $BUILD_DIR/dst-$GCC_BUILD-$t/$PREFIX/lib/gcc/$t-apple-darwin$DARWIN_VERS \
+        ${BUILT_PREFIX}/lib/gcc || exit 1
     done
     echo -e "Done\n----"
 
@@ -470,9 +481,9 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     # APPLE LOCAL end native compiler support
     echo -e "Done\n----"
 
+    echo "Copying include"
+    echo "---------------"
     # include
-    HEADERPATH=/include/gcc/darwin/$MAJ_VERS
-    mkdir -p .$HEADERPATH || exit 1
 
     # Some headers are installed from more-hdrs/.  They all share
     # one common feature: they shouldn't be installed here.  Sometimes,
@@ -481,19 +492,26 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     # they only exist for codewarrior compatibility and codewarrior should provide
     # its own.  We take care not to install the headers if Libc is already
     # providing them.
-    cd $SRC_DIR/more-hdrs
+    HEADERPATH=/include/gcc/darwin/$MAJ_VERS
+    mkdir -p $BUILT_PREFIX$HEADERPATH || exit 1
+    cd $SRC_DIR/more-hdrs || exit 1
     for h in `echo *.h` ; do
       if [ ! -f /usr/include/$h -o -L /usr/include/$h ] ; then
-        cp -vR $h $BUILT_PREFIX$HEADERPATH/$h || exit 1
+        cp -vR $h $BUILT_PREFIX/$HEADERPATH/$h || exit 1
         for t in $GCC_TARGETS ; do
           THEADERPATH=$BUILT_PREFIX/lib/gcc/${t}-apple-darwin$DARWIN_VERS/$VERS/include
+          if [ ! -d "$THEADERPATH" ] ; then
+              mkdir -p $THEADERPATH
+          fi
           [ -f $THEADERPATH/$h ] || \
-            echo ln -sf ${BUILT_DIR}${HEADERPATH}/$h $THEADERPATH/$h || \
+            echo ln -sf ${BUILD_DIR}/dst-$t-$t$PREFIX${HEADERPATH}/$h $THEADERPATH/$h
             #ln -s ../../../../../include/gcc/darwin/$MAJ_VERS/$h $THEADERPATH/$h || \
-            exit 1
+            #cp -pv ${BUILD_DIR}/dst-$t-$t$PREFIX/lib/gcc/${t}-apple-darwin${DARWIN_VERS}/$VERS/include/$h $THEADERPATH/$h ||
+            #    exit 1
         done
       fi
     done
+    echo -e "Done\n----"
 
 
     # Add extra man page symlinks for 'c++' and for arch-specific names.
@@ -518,7 +536,7 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     MAN1_DIR=$BUILT_PREFIX/share/man/man1
     mkdir -p ${MAN1_DIR}
     for i in gcc.1 g++.1 cpp.1 gcov.1 gfortran.1 ; do
-        cp $BUILD_DIR/obj-$GCC_BUILD-*/gcc/doc/$i ${MAN1_DIR}/$i
+        cp $BUILD_DIR/obj-$GCC_BUILD-$GCC_BUILD/gcc/doc/$i ${MAN1_DIR}/$i
     done
     cp $SRC_DIR/gcc/doc/llvm-gcc.1 ${MAN1_DIR}/llvm-gcc.1
     # llvm-g++ manpage is a dup of llvm-gcc manpage
@@ -536,18 +554,30 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
         -DIL="\"$PREFIX/bin/\"" -I$SRC_DIR/include \
         -I$SRC_DIR/gcc -I$SRC_DIR/gcc/config \
         -liberty -L$BUILD_DIR/dst-$GCC_BUILD-$h$PREFIX/lib/  \
-        -L$BUILD_DIR/dst-$GCC_BUILD-$h$PREFIX/$h-apple-darwin$DARWIN_VERS/lib/ \
+        -L$BUILD_DIR/dst-$GCC_BUILD-$h$PREFIX/lib/gcc/$h-apple-darwin$DARWIN_VERS/$VERS \
             -L$BUILD_DIR/obj-$h-$GCC_BUILD/libiberty/ \
         -o $BUILT_PREFIX/bin/tmp-$h-llvm-gcc-$MAJ_VERS || exit 1
+
+        $h-apple-darwin$DARWIN_VERS-gcc \
+        $SRC_DIR/driverdriver.c  \
+        -DPDN="\"-apple-darwin$DARWIN_VERS-llvm-gfortran-$MAJ_VERS\""  \
+        -DIL="\"$PREFIX/bin/\"" -I$SRC_DIR/include \
+        -I$SRC_DIR/gcc -I$SRC_DIR/gcc/config \
+        -I$SRC_DIR/gcc/fortran \
+        -liberty -L$BUILD_DIR/dst-$GCC_BUILD-$h$PREFIX/lib/  \
+        -L$BUILT_PREFIX/lib \
+        -L$BUILD_DIR/dst-$GCC_BUILD-$h$PREFIX/lib/gcc/$h-apple-darwin$DARWIN_VERS/$VERS \
+            -L$BUILD_DIR/obj-$h-$GCC_BUILD/libiberty/ \
+        -o $BUILT_PREFIX/bin/tmp-$h-llvm-gfortran-$MAJ_VERS || exit 1
 
         if [ "$BUILD_CXX" = "1" ]; then
             $h-apple-darwin$DARWIN_VERS-gcc \
             $SRC_DIR/driverdriver.c \
             -DPDN="\"-apple-darwin$DARWIN_VERS-llvm-g++-$MAJ_VERS\"" \
-            -DIL="\"$DEST_ROOT/bin/\"" -I$SRC_DIR/include \
+            -DIL="\"$PREFIX/bin/\"" -I$SRC_DIR/include \
             -I$SRC_DIR/gcc -I$SRC_DIR/gcc/config \
-            -liberty -L$BUILD_DIR/dst-$GCC_BUILD-$h$DEST_ROOT/lib/ \
-            -L$BUILD_DIR/dst-$GCC_BUILD-$h$PREFIX/$h-apple-darwin$DARWIN_VERS/lib/ \
+            -liberty -L$BUILD_DIR/dst-$GCC_BUILD-$h$PREFIX/lib/ \
+            -L$BUILD_DIR/dst-$GCC_BUILD-$h$PREFIX/lib/gcc/$h-apple-darwin$DARWIN_VERS/$VERS/ \
                 -L$BUILD_DIR/obj-$h-$GCC_BUILD/libiberty/ \
             -o $BUILT_PREFIX/bin/tmp-$h-llvm-g++-$MAJ_VERS || exit 1
         fi
@@ -559,6 +589,10 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     lipo -output $BUILT_PREFIX/bin/llvm-gcc-$MAJ_VERS -create \
       $BUILT_PREFIX/bin/tmp-*-llvm-gcc-$MAJ_VERS || exit 1
     rm $BUILT_PREFIX/bin/tmp-*-llvm-gcc-$MAJ_VERS || exit 1
+
+    lipo -output $BUILT_PREFIX/bin/llvm-gfortran-$MAJ_VERS -create \
+      $BUILT_PREFIX/bin/tmp-*-llvm-gfortran-$MAJ_VERS || exit 1
+    rm $BUILT_PREFIX/bin/tmp-*-llvm-gfortran-$MAJ_VERS || exit 1
 
     if [ "$BUILD_CXX" = "1" ]; then
         lipo -output $BUILT_PREFIX/bin/llvm-g++-$MAJ_VERS -create \
@@ -582,7 +616,7 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
         \! -name mkheaders -type f -print | xargs -n 1 -P ${N_MAKE} dsymutil
 
     # Save .dSYM files and .a archives
-    cd $DEST_DIR || exit 1
+    cd $BUILT_PREFIX || exit 1
     find . \( -path \*.dSYM/\* -or -name \*.a \) -print \
       | cpio -pdml $DSYMDIR || exit 1
     # Save source files.
@@ -617,31 +651,34 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     # Set up the llvm-gcc/llvm-g++ symlinks.
 
     # LLVM_BIN_DIR - This is the place where llvm-gcc/llvm-g++ symlinks get installed.
-    LLVM_BIN_DIR=$PREFIX/../bin
+    LLVM_BIN_DIR=/bin
 
     mkdir -p $BUILT_PREFIX$LLVM_BIN_DIR
     cd $BUILT_PREFIX$LLVM_BIN_DIR
-    ln -s -f   ${BUILT_PREFIX}/llvm-gcc-$MAJ_VERS/bin/llvm-gcc-$MAJ_VERS   ${PWD}/llvm-gcc-$MAJ_VERS || exit 1
-    ln -s -f   ${BUILT_PREFIX}/llvm-gcc-$MAJ_VERS/bin/llvm-g++-$MAJ_VERS   ${PWD}/llvm-g++-$MAJ_VERS || exit 1
-    ln -s -f   ${BUILT_PREFIX}/llvm-gcc-$MAJ_VERS/bin/llvm-cpp-$MAJ_VERS   ${PWD}/llvm-cpp-$MAJ_VERS || exit 1
-    ln -s -f   ${BUILT_PREFIX}/llvm-gcc-$MAJ_VERS/bin/llvm-gcc-$MAJ_VERS   ${PWD}/llvm-gcc || exit 1
-    ln -s -f   ${BUILT_PREFIX}/llvm-gcc-$MAJ_VERS/bin/llvm-g++-$MAJ_VERS   ${PWD}/llvm-g++ || exit 1
+    ln -s -f   llvm-gcc-$MAJ_VERS        llvm-gcc || exit 1
+    ln -s -f   llvm-g++-$MAJ_VERS        llvm-g++ || exit 1
+    ln -s -f   llvm-gfortran-$MAJ_VERS   llvm-gfortran || exit 1
+    ln -s -f   llvm-gcc        gcc || exit 1
+    ln -s -f   llvm-g++        g++ || exit 1
+    ln -s -f   llvm-gfortran   gfortran || exit 1
 
     # FIXME: This is a hack to get things working.
-    for t in $GCC_TARGETS ; do
-        ln -s -f ${BUILT_PREFIX}/llvm-gcc-$MAJ_VERS/bin/$t-apple-darwin$DARWIN_VERS-llvm-gcc-$MAJ_VERS  ${PWD}/$t-apple-darwin$DARWIN_VERS-llvm-gcc-$MAJ_VERS || exit 1
-        ln -s -f ${BUILT_PREFIX}/llvm-gcc-$MAJ_VERS/bin/$t-apple-darwin$DARWIN_VERS-llvm-g++-$MAJ_VERS  ${PWD}/$t-apple-darwin$DARWIN_VERS-llvm-g++-$MAJ_VERS || exit 1
-    done
+    #for t in $GCC_TARGETS ; do
+    #    ln -s -f ${BUILT_PREFIX}/llvm-gcc-$MAJ_VERS/bin/$t-apple-darwin$DARWIN_VERS-llvm-gcc-$MAJ_VERS  ${PWD}/$t-apple-darwin$DARWIN_VERS-llvm-gcc-$MAJ_VERS || exit 1
+    #    ln -s -f ${BUILT_PREFIX}/llvm-gcc-$MAJ_VERS/bin/$t-apple-darwin$DARWIN_VERS-llvm-g++-$MAJ_VERS  ${PWD}/$t-apple-darwin$DARWIN_VERS-llvm-g++-$MAJ_VERS || exit 1
+    #done
 
     # Copy one of the libllvmgcc.dylib's up to libexec/gcc.
-    cp $BUILT_PREFIX/libexec/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/libllvmgcc.dylib \
+    mkdir -p $BUILT_PREFIX/libexec/gcc
+    cp $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/libexec/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/libllvmgcc.dylib \
         $BUILT_PREFIX/libexec/gcc/
 
     # Replace the installed ones with symlinks to the common one.
     for t in $GCC_TARGETS ; do
-        cd $BUILT_PREFIX/libexec/gcc/$t-apple-darwin$DARWIN_VERS/$VERS/
-        rm libllvmgcc.dylib
-        ln -s ../../libllvmgcc.dylib
+        cd $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX/libexec/gcc/$t-apple-darwin$DARWIN_VERS/$VERS/ || exit 1
+        rm libllvmgcc.dylib || exit 1
+        ln -s $BUILT_PREFIX/libexec/gcc/libllvmgcc.dylib
+        #ln -s ../../libllvmgcc.dylib
     done
 
     # Remove unwind.h from the install directory for > 10.6
@@ -681,8 +718,6 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
 
     # Done!
     exit 0
-
-
 
 
     # what i started with...

@@ -22,9 +22,10 @@
 # LOAD CONFIGURATION VARIABLES
 #========================
 . CONFIG
+. build-macros.sh
 
 
-./build-deps.sh
-./build-llvmgcc.sh
-./build-gcc.sh
+run ./build-deps.sh 
+run ./build-llvmgcc.sh
+run ./build-gcc.sh 
 
