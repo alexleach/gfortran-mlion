@@ -76,7 +76,7 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
       --enable-languages=${LANGUAGES} \
       --program-prefix=llvm- \
       --program-transform-name=/^[cg][^.-]*$/s/$/-$MAJ_VERS/ \
-      --with-slibdir=/usr/lib \
+      --with-slibdir=${PREFIX}/lib \
       --build=${TRIPLE} \
       --enable-llvm=${BUILT_PREFIX} \
       --with-gmp=${BUILT_PREFIX} \
@@ -328,7 +328,7 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
               echo "Done all-gcc for $BUILD_DIR/dst-$h-$t"
               echo -e "--------------------------------------------\n"
               make $MAKEFLAGS DESTDIR=$BUILD_DIR/dst-$h-$t install-gcc \
-                  CFLAGS="$CFLAGS" CXXFLAGS="-I/usr/include/c++/$VERS $CFLAGS" || exit 24
+                  CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 24
           fi
 
 #          if [ $t = 'arm' ] ; then
@@ -369,12 +369,33 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
       for d in $LIBEXEC_DIRS ; do
         mkdir -p .$DL/$d || exit 1
       done
+      ALTARCH=`echo $GCC_HOSTS | sed -e s/$t// | sed -e 's/ //g'`
+      echo -e "GOT ALTARCH = $ALTARCH\n--------------------------\n"
+      echo -e "GOT GCC_HOSTS = $GCC_HOSTS\n--------------------------\n"
+      echo -e "GOT GCC_BUILD = $GCC_BUILD\n--------------------------\n"
+      ALTDL=/libexec/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS
       for f in $LIBEXEC_FILES ; do
         # LLVM LOCAL
         if file $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f | grep -q -E 'Mach-O (executable|dynamically linked shared library)' ; then
-          lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f || exit 1
+            # look for other architecture version
+            if [ -f "${BUILD_DIR}/dst-${ALTARCH}-${GCC_BUILD}${PREFIX}${ALTDL}/${f}" ] ; then
+                echo lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$ALTDL/$f \
+                    $BUILD_DIR/dst-$ALTARCH-$GCC_BUILD$PREFIX$DL/$f || exit 1
+                lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$ALTDL/$f \
+                    $BUILD_DIR/dst-$ALTARCH-$GCC_BUILD$PREFIX$DL/$f || exit 1
+            elif [ -f "${BUILD_DIR}/dst-${GCC_BUILD}-${ALTARCH}${PREFIX}${DL}/${f}" ] ; then
+                echo lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f \
+                    $BUILD_DIR/dst-$GCC_BUILD-$ALTARCH$PREFIX$DL/$f || exit 1
+                lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f \
+                    $BUILD_DIR/dst-$GCC_BUILD-$ALTARCH$PREFIX$DL/$f || exit 1
+            else
+                echo "Can't find ${BUILD_DIR}/dst-${GCC_BUILD}-${ALTARCH}${PREFIX}${DL}/${f} "
+                echo "Also no    ${BUILD_DIR}/dst-${ALTARCH}-${GCC_BUILD}${PREFIX}${ALTDL}/${f}"
+                echo lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f || exit 1
+                lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f || exit 1
+            fi
         else
-          cp -pv $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f .$DL/$f || exit 1
+            cp -pv $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f .$DL/$f || exit 1
         fi
       done
       # LLVM LOCAL begin fix broken link
@@ -391,6 +412,7 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     # The native drivers ('native' is different in different architectures).
     # LLVM LOCAL begin
     mkdir -p $BUILT_PREFIX/bin
+    libdir="$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS"
     cpp_files=`ls $BUILD_DIR/dst-*$PREFIX/bin/{llvm-cpp,cpp-$MAJ_VERS} 2>/dev/null`
     echo lipo -output $BUILT_PREFIX/bin/llvm-cpp-$MAJ_VERS -create $cpp_files || exit 1
     lipo -output $BUILT_PREFIX/bin/llvm-cpp-$MAJ_VERS -create $cpp_files || exit 1
@@ -420,34 +442,86 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     # lib
     echo "Copying over lib/"
     echo -e "-----------------\n"
-    mkdir -p ./lib/gcc || exit 1
-    # Merge libgfortran and libgfortranbegin with lipo, then delete individuals.
-    libdir="$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS"
-    libversion="$libdir/`grep dlname $libdir/libgfortran.la | sed -e s/^.*=\'// -e s/\'$//`"
-    libbeginversion="$libdir/`grep dlname $libdir/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
+    # For every archive we successfully copy to $BUILT_PREFIX/.../lib/.., we'll delete the
+    #  original, so we don't overwrite it later..
+    ## i386 only: libcc_kext.a libgcc_static.a 
+    ## In x86_64 too: libgcc.a libgcc_eh.a libgcov.a libgfortranbegin.a libgfortran.dylib
+    ## .la files: libgfortran.la libgfortranbegin.la libgomp.la
 
-    libfortranaltnames="`grep library_names $libdir/libgfortran.la | sed -e s/^.*=\'// -e s/\'$// -e s/$libversion//`"
-    libbeginaltnames="`grep library_names $libdir/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$// -e s/$libbeginversion//`"
+    mkdir -p $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS || exit 1
+    baselibdir="$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/lib"
+    baselib64dir="$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/lib/x86_64"
 
-    if [ -d $libdir/x86_64 ** -a -f $libdir/x86_64/libgfortran.la ] ; then
-        libversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortran.la | sed -e s/^.*=\'// -e s/\'$//`"
-        libbeginversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
-    fi  
-    libgfortrans="$libversion $libversion64"
-    libgfortranbegins="$libbeginversion $libbeginversion64"
+    libdir="$baselibdir/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS"
+    lib64dir="$libdir/x86_64"
 
-    lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS -create \
-        $libgfortrans || exit 1
-
-    lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS -create \
-        $libgfortranbegins || exit 1
-
-    for t in $GCC_TARGETS ; do
-      # LLVM LOCAL build_gcc bug with non-/usr $PREFIX
-      cp -vRp $BUILD_DIR/dst-$GCC_BUILD-$t/$PREFIX/lib/gcc/$t-apple-darwin$DARWIN_VERS \
-        ${BUILT_PREFIX}/lib/gcc || exit 1
+    echo "Copying over static archives"
+    echo -e "----------------------------\n"
+    for f in `echo libgcc.a libgcc_eh.a libgcov.a libcc_kext.a libgcc_static.a libgfortranbegin.a libgfortran.a` ; do
+        if [ -f $baselibdir/$f -a -f $baselib64dir/$f ] ; then
+            lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f -create \
+                $baselibdir/$f $baselib64dir/$f || exit 1
+#            rm $baselibdir/$f $baselib64dir/$f
+        elif [ -f $libdir/$f -a -f $lib64dir/$f ] ; then
+            lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f -create \
+                $libdir/$f $lib64dir/$f || exit 1
+#            rm $libdir/$f $lib64dir/$f
+        else
+            echo "Don't have 64bit version of $f in $baselib64dir or $lib64dir !!"
+            cp -p $libdir/$f \
+                $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f || exit 1
+#            rm $libdir/$f
+        fi
     done
-    echo -e "Done\n----"
+
+    echo "Copying over dylibs (libgfortran.dylib & libgfortranbegin.dylib)"
+    echo -e "-------------------\n"
+
+    # Merge libgfortran and libgfortranbegin with lipo, then delete individuals.
+    # libgfortranbegin is in $libdir
+    libbeginversion="`grep dlname $libdir/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
+    libbeginaltnames="`grep library_names $libdir/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$// -e s/$libbeginversion//`"
+    if [ ! -z "$libbeginversion" -a -d $libdir/x86_64 -a -f $libdir/x86_64/libgfortranbegin.la ] ; then
+        libbeginversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
+        echo running lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libbeginversion \
+            -create $libbegins
+        libbegins="$libdir/$libbeginversion $libbeginversion64"
+        lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libbeginversion -create $libbegins || exit 1
+        rm $libbegins
+    fi
+    cp $libdir/*.la $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS
+
+    cd $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS
+    for f in $libbeginaltnames ; do ln -s $libbeginversion $f ; done
+
+    # libgfortran is in $baselibdir
+    if [ -f $baselibdir/libgfortran.la ] ; then
+        cp $baselibdir/libgfortran.la ./
+        libdir="$baselibdir"
+    elif [ -f $libdir/libgfortran.la ] ; then 
+        cp $libdir/libgfortran.la ./
+    fi
+
+    libgfortversion="`grep dlname libgfortran.la | sed -e s/^.*=\'// -e s/\'$//`"
+    libgfortaltnames="`grep library_names libgfortran.la | sed -e s/^.*=\'// -e s/\'$// -e s/$libversion//`"
+    if [ -d $libdir/x86_64 -a -f $libdir/x86_64/libgfortran.la ] ; then
+        libgfortversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortran.la | sed -e s/^.*=\'// -e s/\'$//`"
+    fi
+    libgforts="$libdir/$libgfortversion $libgfortversion64"
+    echo running lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libgfortversion \
+        -create $libgforts 
+    lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libgfortversion \
+        -create $libgforts || exit 1
+    rm $libgforts
+    for f in $libgfortaltnames ; do ln -s $libgfortversion $f ; done
+
+
+#    for t in $GCC_TARGETS ; do
+#      # LLVM LOCAL build_gcc bug with non-/usr $PREFIX
+#      cp -vRp $BUILD_DIR/dst-$GCC_BUILD-$t/$PREFIX/lib/gcc/$t-apple-darwin$DARWIN_VERS \
+#        ${BUILT_PREFIX}/lib/gcc || exit 1
+#    done
+    echo -e "Done libs\n---- ----"
 
     # APPLE LOCAL begin native compiler support
     # libgomp is not built for ARM
@@ -547,6 +621,7 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
 
     # Build driver-driver using fully-named drivers
     for h in $GCC_HOSTS ; do
+        echo Compiling $BUILT_PREFIX/bin/tmp-$h-llvm-gcc-$MAJ_VERS
         # LLVM LOCAL begin
         $h-apple-darwin$DARWIN_VERS-gcc \
         $SRC_DIR/driverdriver.c  \
@@ -558,6 +633,7 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
             -L$BUILD_DIR/obj-$h-$GCC_BUILD/libiberty/ \
         -o $BUILT_PREFIX/bin/tmp-$h-llvm-gcc-$MAJ_VERS || exit 1
 
+        echo Compiling $BUILT_PREFIX/bin/tmp-$h-llvm-gfortran-$MAJ_VERS
         $h-apple-darwin$DARWIN_VERS-gcc \
         $SRC_DIR/driverdriver.c  \
         -DPDN="\"-apple-darwin$DARWIN_VERS-llvm-gfortran-$MAJ_VERS\""  \
@@ -571,6 +647,7 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
         -o $BUILT_PREFIX/bin/tmp-$h-llvm-gfortran-$MAJ_VERS || exit 1
 
         if [ "$BUILD_CXX" = "1" ]; then
+            echo Compiling $BUILT_PREFIX/bin/tmp-$h-llvm-g++-$MAJ_VERS
             $h-apple-darwin$DARWIN_VERS-gcc \
             $SRC_DIR/driverdriver.c \
             -DPDN="\"-apple-darwin$DARWIN_VERS-llvm-g++-$MAJ_VERS\"" \
@@ -669,17 +746,17 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     #done
 
     # Copy one of the libllvmgcc.dylib's up to libexec/gcc.
-    mkdir -p $BUILT_PREFIX/libexec/gcc
-    cp $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/libexec/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/libllvmgcc.dylib \
-        $BUILT_PREFIX/libexec/gcc/
+#    mkdir -p $BUILT_PREFIX/libexec/gcc
+#    cp $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/libexec/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/libllvmgcc.dylib \
+#        $BUILT_PREFIX/libexec/gcc/$GCC_BUILD
 
     # Replace the installed ones with symlinks to the common one.
-    for t in $GCC_TARGETS ; do
-        cd $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX/libexec/gcc/$t-apple-darwin$DARWIN_VERS/$VERS/ || exit 1
-        rm libllvmgcc.dylib || exit 1
-        ln -s $BUILT_PREFIX/libexec/gcc/libllvmgcc.dylib
-        #ln -s ../../libllvmgcc.dylib
-    done
+#    for t in $GCC_TARGETS ; do
+#        cd $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX/libexec/gcc/$t-apple-darwin$DARWIN_VERS/$VERS/ || exit 1
+#        rm libllvmgcc.dylib || exit 1
+#        ln -s $BUILT_PREFIX/libexec/gcc/libllvmgcc.dylib
+#        #ln -s ../../libllvmgcc.dylib
+#    done
 
     # Remove unwind.h from the install directory for > 10.6
     if [ $DARWIN_VERS -gt 10 ]; then
