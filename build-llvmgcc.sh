@@ -102,7 +102,7 @@ if [ ! -f make.checked ] ; then
         CXX="clang++" \
         CPPFLAGS="-I/usr/include -I/usr/include/c++/4.2.1 -I${SRC_DIR}/gcc" \
         ${SRC_DIR}/llvmCore/configure \
-            --prefix="${BUILT_PREFIX}" \
+            --prefix="${PREFIX}" \
             --enable-targets=arm,x86,cbe \
             --enable-assertions=no \
             --enable-optimized=yes \

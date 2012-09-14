@@ -60,13 +60,13 @@
                      -L/usr/lib" \
             ARCHFLAGS="-arch i386" \
             FFLAGS="-arch i386" \
-            ../configure --enable-werror --prefix=${BUILT32_PREFIX} --build=i686-apple-darwin11 --host=i386-apple-darwin11 \
+            ../configure --enable-werror --prefix=${PREFIX} --build=i686-apple-darwin11 --host=i386-apple-darwin11 \
                 || exit 1
 
         run make -j${N_MAKE}
         check
     fi
-    run make install
+    make install DESTDIR="${BUILT32_PREFIX}" || exit 1
 
     # c. Build x86_64 binary
     #----------------------------------
@@ -87,29 +87,25 @@
                      -L/usr/lib" \
             ARCHFLAGS="-arch x86_64" \
             FFLAGS="-arch x86_64" \
-            ../configure --enable-werror --prefix=${BUILT64_PREFIX} --build=i686-apple-darwin11 --host=x86_64-apple-darwin11 \
+            ../configure --enable-werror --prefix=${PREFIX} --build=i686-apple-darwin11 --host=x86_64-apple-darwin11 \
                 || exit 1
 
         run make -j${N_MAKE}
         check
     fi
-    run make install
+    make install DESTDIR="${BUILT64_PREFIX}${PREFIX}" || exit 1
     cd ..
 
     # d. Link with lipo
     #----------------------------------
 
     echo "\nMaking GMP fat binary...\n"
-    libversion=`grep dlname ${BUILT64_PREFIX}/lib/libgmp.la | sed -e "s|^.*=\'||" -e "s|\'$||"`
-    linkversions=`grep "library_names" ${BUILT64_PREFIX}/lib/libgmp.la | sed -e "s|^.*=\'||" -e "s|\'$||" | sed -e "s|$libversion||"`
-    if [ ! -e $BUILT_PREFIX/lib/${libversion} ] ; then
-        run lipo -create ${BUILT32_PREFIX}/lib/${libversion} -create ${BUILT64_PREFIX}/lib/${libversion} \
-            -output $BUILT_PREFIX/lib/${libversion} || exit 1
-    fi
-    if [ ! -e $BUILT_PREFIX/lib/libgmp.a ] ; then
-        run lipo -create ${BUILT32_PREFIX}/lib/libgmp.a      -create ${BUILT64_PREFIX}/lib/libgmp.a \
-            -output $BUILT_PREFIX/lib/libgmp.a || exit 1
-    fi
+    libversion=`grep dlname ${BUILT64_PREFIX}${PREFIX}/lib/libgmp.la | sed -e "s|^.*=\'||" -e "s|\'$||"`
+    linkversions=`grep "library_names" ${BUILT64_PREFIX}${PREFIX}/lib/libgmp.la | sed -e "s|^.*=\'||" -e "s|\'$||" | sed -e "s|$libversion||"`
+    run lipo  -output $BUILT_PREFIX/lib/${libversion} \
+        -create ${BUILT32_PREFIX}${PREFIX}/lib/${libversion} ${BUILT64_PREFIX}${PREFIX}/lib/${libversion} || exit 1
+    run lipo -output $BUILT_PREFIX/lib/libgmp.a \
+        -create ${BUILT32_PREFIX}${PREFIX}/lib/libgmp.a ${BUILT64_PREFIX}${PREFIX}/lib/libgmp.a || exit 1
 
     cd $BUILT_PREFIX/lib
     for tolink in $linkversions ; do
@@ -122,11 +118,11 @@
     #----------------------------------
 
     # Patch gmp.h header
-    cp  ${BUILT64_PREFIX}/include/gmp.h $BUILT_PREFIX/include/
+    cp  ${BUILT64_PREFIX}${PREFIX}/include/gmp.h $BUILT_PREFIX/include/
     run patch -u $BUILT_PREFIX/include/gmp.h ../patch/gmp.h.diff
 
     # edit libgmp.la file
-    run sed -e "s|^libdir.*$|libdir='${BUILT_PREFIX}/lib'|" ${BUILT32_PREFIX}/lib/libgmp.la > $BUILT_PREFIX/lib/libgmp.la
+    run sed -e "s|^libdir.*$|libdir='${BUILT_PREFIX}/lib'|" ${BUILT32_PREFIX}${PREFIX}/lib/libgmp.la > $BUILT_PREFIX/lib/libgmp.la
 
     # f. Install to /usr/local
     #--------------------------
@@ -180,14 +176,14 @@
                      -L$BUILT_PREFIX/lib" \
             ARCHFLAGS="-arch i386" \
             FFLAGS="-arch i386" \
-            ${SRC_DIR}/configure --prefix="${BUILT32_PREFIX}" || exit 1
+            ${SRC_DIR}/configure --prefix="${PREFIX}" || exit 1
 
         echo "configured. Cleaning"
 
         make clean > /dev/null 2&>1 
         run make -j${N_MAKE}
         check
-        run make install
+        make install DESTDIR="${BUILT32_PREFIX}" || exit 1
     fi
     cd  ..
 
@@ -214,13 +210,13 @@
                      -L$BUILT_PREFIX/lib" \
             ARCHFLAGS="-arch x86_64" \
             FFLAGS="-arch x86_64" \
-            $SRC_DIR/configure --prefix="${BUILT64_PREFIX}" \
+            $SRC_DIR/configure --prefix="${PREFIX}" \
                 || exit 1
 
         make clean > /dev/null 2&>1 
         run make -j${N_MAKE}
         check
-        run make install
+        make install DESTDIR="${BUILT64_PREFIX}" || exit 1
     fi
     cd  ..
 
@@ -228,16 +224,13 @@
     #----------------------------------
 
     echo "\nMaking MPFR fat binary...\n"
-    libversion=`grep dlname ${BUILT64_PREFIX}/lib/libmpfr.la | sed -e "s|^.*=\'||" -e "s|\'$||"`
-    linkversions=`grep "library_names" ${BUILT64_PREFIX}/lib/libmpfr.la | sed -e "s|^.*=\'||" -e "s|\'$||" | sed -e "s|$libversion||"`
-    if [ ! -e $BUILT_PREFIX/lib/$libversion ] ; then
-        run lipo -create ${BUILT32_PREFIX}/lib/$libversion -create ${BUILT64_PREFIX}/lib/$libversion \
-            -output ${BUILT_PREFIX}/lib/$libversion || exit 1
-    fi
-    if [ ! -e $BUILT_PREFIX/lib/libmpfr.a ] ; then
-        run lipo -create ${BUILT32_PREFIX}/lib/libmpfr.a   -create ${BUILT64_PREFIX}/lib/libmpfr.a   \
-            -output ${BUILT_PREFIX}/lib/libmpfr.a   || exit 1
-    fi
+    libversion=`grep dlname ${BUILT64_PREFIX}${PREFIX}/lib/libmpfr.la | sed -e "s|^.*=\'||" -e "s|\'$||"`
+    linkversions=`grep "library_names" ${BUILT64_PREFIX}${PREFIX}/lib/libmpfr.la | sed -e "s|^.*=\'||" -e "s|\'$||" | sed -e "s|$libversion||"`
+    run lipo -output ${BUILT_PREFIX}/lib/$libversion \
+        -create ${BUILT32_PREFIX}${PREFIX}/lib/$libversion ${BUILT64_PREFIX}${PREFIX}/lib/$libversion  || exit 1
+    run lipo -output ${BUILT_PREFIX}/lib/libmpfr.a  \
+        -create ${BUILT32_PREFIX}${PREFIX}/lib/libmpfr.a ${BUILT64_PREFIX}${PREFIX}/lib/libmpfr.a || exit 1
+
 
     cd $BUILT_PREFIX/lib
     for tolink in $linkversions ; do
@@ -249,11 +242,11 @@
     # d. Copy over headers (diff -r shows that i386 build uses same headers as x86 build)
     #----------------------------------
 
-    cp -p  $BUILT32_PREFIX/include/*.h $BUILT_PREFIX/include/
-    cp -pr $BUILT32_PREFIX/share       $BUILT_PREFIX/
+    cp -p  $BUILT32_PREFIX${PREFIX}/include/*.h $BUILT_PREFIX/include/
+    cp -pr $BUILT32_PREFIX${PREFIX}/share       $BUILT_PREFIX/
 
     # patch libmpfr.la file for temp installation directory
-    run sed -e "s|^libdir.*$|libdir='${BUILT_PREFIX}/lib'|" ${BUILT32_PREFIX}/lib/libmpfr.la > ${BUILT_PREFIX}/lib/libmpfr.la
+    run sed -e "s|^libdir.*$|libdir='${BUILT_PREFIX}/lib'|" ${BUILT32_PREFIX}${PREFIX}/lib/libmpfr.la > ${BUILT_PREFIX}/lib/libmpfr.la
 
     # e. Install
     #----------------------------------
@@ -262,7 +255,7 @@
     #  Otherwise, we'll prompt the user later to run `ditto ${BUILT_PREFIX} ${PREFIX}`
     if [ "`id`" = "`id root`" ] ; then
         # patch libmpfr.la file for installation directory
-        run sed -e "s|^libdir.*$|libdir='${PREFIX}/lib'|" ${BUILT32_PREFIX}/lib/libmpfr.la > ${PREFIX}/lib/libmpfr.la
+        run sed -e "s|^libdir.*$|libdir='${PREFIX}/lib'|" ${BUILT32_PREFIX}${PREFIX}/lib/libmpfr.la > ${PREFIX}/lib/libmpfr.la
         echo "\nInstalling ${libversion} to ${PREFIX}\n"
         run cp -v  ${BUILT_PREFIX}/include/* ${PREFIX}/include/
         run cp -v  ${BUILT_PREFIX}/lib/*     ${PREFIX}/lib/

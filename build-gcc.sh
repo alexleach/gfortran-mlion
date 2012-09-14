@@ -461,14 +461,22 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
         if [ -f $baselibdir/$f -a -f $baselib64dir/$f ] ; then
             lipo -output $BUILT_PREFIX/lib/$f -create \
                 $baselibdir/$f $baselib64dir/$f || exit 1
+            install_name_tool -change ${BUILT_PREFIX}/lib/x86_64/$f \
+                ${PREFIX}/lib/$f $BUILT_PREFIX/lib/$f || exit 1
 #            rm $baselibdir/$f $baselib64dir/$f
         elif [ -f $libdir/$f -a -f $lib64dir/$f ] ; then
             lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f -create \
                 $libdir/$f $lib64dir/$f || exit 1
+            install_name_tool -change ${BUILT_PREFIX}/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/x86_64/$f \
+                ${PREFIX}/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f \
+                $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f || exit 1
 #            rm $libdir/$f $lib64dir/$f
         else
             echo "Don't have 64bit version of $f in $baselib64dir or $lib64dir !!"
             cp -p $libdir/$f \
+                $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f || exit 1
+            install_name_tool -change ${BUILT_PREFIX}/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/x86_64/$f \
+                ${PREFIX}/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f \
                 $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f || exit 1
 #            rm $libdir/$f
         fi
@@ -480,7 +488,7 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     #crosslib64dir="$BUILD_DIR/dst-$GCC_BUILD-$ALTARCH$PREFIX/lib/x86_64"
     crosslibdir="$crossbaselibdir/gcc/$ALTARCH-apple-darwin$DARWIN_VERS/$VERS"
     #crosslib64dir="$libdir/x86_64"
-    echo "Copying over crossed static archives"
+    echo "Copying over crossed static archives" # did have libcc_kext, but saw that's been dealt with.
     echo -e "----------------------------\n"
     for f in `echo libgcc_static.a` ; do
         if [ -f $crossbaselibdir/$f -a -f $baselibdir/$f ] ; then
@@ -818,10 +826,6 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     chgrp -h -R staff $BUILT_PREFIX
     chgrp -R staff $BUILT_PREFIX
 
-    ## Need to clean up the libgmp.la and libmpfr.la files.
-
-    sed -e "s,^libdir=.*$,libdir=\\'${PREFIX}/lib\\'," -i '' "${BUILT_PREFIX}/lib/libgmp.la"
-    sed -e "s,^libdir=.*$,libdir=\\'${PREFIX}/lib\\'," -i '' "${BUILT_PREFIX}/lib/libmpfr.la"
 
     # Done!
     exit 0
