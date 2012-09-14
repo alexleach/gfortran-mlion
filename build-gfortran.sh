@@ -28,5 +28,4 @@
 run ./build-deps.sh 
 run ./build-llvmgcc.sh
 run ./build-gcc.sh 
-run ./install-gfortran.sh 
 

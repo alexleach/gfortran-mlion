@@ -27,16 +27,16 @@ BUILT_PREFIX="${PWD}/install${PREFIX}"
     gmpversion="`grep dlname ${BUILT_PREFIX}/lib/libgmp.la  | sed -e s/^.*=\'// -e s/\'$//`"
     mpfversion="`grep dlname ${BUILT_PREFIX}/lib/libmpfr.la | sed -e s/^.*=\'// -e s/\'$//`"
 
-    echo install_name_tool -change "${BUILT_PREFIX}/lib/x86_64/$gmpversion" ${PREFIX}/lib/$gmpversion \
-        "${BUILT_PREFIX}/lib/$gmpversion" || exit 1
-    install_name_tool -id ${PREFIX}/$gmpversion \
-        -change "${BUILT_PREFIX}/lib/x86_64/$gmpversion" ${PREFIX}/lib/$gmpversion \
-        "${BUILT_PREFIX}/lib/$gmpversion" || exit 1
-    echo install_name_tool -change "${BUILT_PREFIX}/lib/x86_64/$mpfversion" ${PREFIX}/lib/$mpfversion \
-        "${BUILT_PREFIX}/lib/$mpfversion" || exit 1
-    install_name_tool  -id ${PREFIX}/$mpfversion \
-        -change "${BUILT_PREFIX}/lib/x86_64/$mpfversion" ${PREFIX}/lib/$mpfversion \
-        "${BUILT_PREFIX}/lib/$mpfversion" || exit 1
+    #echo install_name_tool -change "${BUILT_PREFIX}/lib/x86_64/$gmpversion" ${PREFIX}/lib/$gmpversion \
+    #    "${BUILT_PREFIX}/lib/$gmpversion" || exit 1
+    #install_name_tool -id ${PREFIX}/lib/$gmpversion \
+    #    -change "${BUILT_PREFIX}/lib/x86_64/$gmpversion" ${PREFIX}/lib/$gmpversion \
+    #    "${BUILT_PREFIX}/lib/$gmpversion" || exit 1
+    #echo install_name_tool -change "${BUILT_PREFIX}/lib/x86_64/$mpfversion" ${PREFIX}/lib/$mpfversion \
+    #    "${BUILT_PREFIX}/lib/$mpfversion" || exit 1
+    #install_name_tool  -id ${PREFIX}/lib/$mpfversion \
+    #    -change "${BUILT_PREFIX}/lib/x86_64/$mpfversion" ${PREFIX}/lib/$mpfversion \
+    #    "${BUILT_PREFIX}/lib/$mpfversion" || exit 1
 
 
 #==============================================================================
