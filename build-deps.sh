@@ -31,14 +31,6 @@
     BUILT_PREFIX="${PWD}/install/usr/local"
     mkdir -p $BUILT_PREFIX/lib $BUILT_PREFIX/include $BUILT_PREFIX/bin $BUILT_PREFIX/share
 
-    # Compiled object directory
-    BUILD_DIR=${PWD}/build
-    mkdir -p ${BUILD_DIR}
-
-    # Debug symbol directory
-    DSYMDIR="${PWD}/debug"
-    mkdir -p ${DSYMDIR}
-
     TRIPLE="${BUILD_ARCH}-apple-darwin${DARWIN_VERS}"
 
     # b. Build i386 binary
@@ -60,7 +52,11 @@
                      -L/usr/lib" \
             ARCHFLAGS="-arch i386" \
             FFLAGS="-arch i386" \
-            ../configure --enable-werror --prefix=${PREFIX} --build=i686-apple-darwin11 --host=i386-apple-darwin11 \
+            ../configure \
+                --enable-werror \
+                --prefix=${PREFIX} \
+                --build=i686-apple-darwin$DARWIN_VERS \
+                --host=i686-apple-darwin$DARWIN_VERS \
                 || exit 1
 
         run make -j${N_MAKE}
@@ -87,13 +83,17 @@
                      -L/usr/lib" \
             ARCHFLAGS="-arch x86_64" \
             FFLAGS="-arch x86_64" \
-            ../configure --enable-werror --prefix=${PREFIX} --build=i686-apple-darwin11 --host=x86_64-apple-darwin11 \
+            ../configure \
+                --enable-werror \
+                --prefix=${PREFIX} \
+                --build=$TRIPLE \
+                --host=x86_64-apple-darwin$DARWIN_VERS \
                 || exit 1
 
         run make -j${N_MAKE}
         check
     fi
-    make install DESTDIR="${BUILT64_PREFIX}${PREFIX}" || exit 1
+    make install DESTDIR="${BUILT64_PREFIX}" || exit 1
     cd ..
 
     # d. Link with lipo
@@ -176,7 +176,8 @@
                      -L$BUILT_PREFIX/lib" \
             ARCHFLAGS="-arch i386" \
             FFLAGS="-arch i386" \
-            ${SRC_DIR}/configure --prefix="${PREFIX}" || exit 1
+            ${SRC_DIR}/configure \
+                --prefix="${PREFIX}" || exit 1
 
         echo "configured. Cleaning"
 
@@ -210,7 +211,8 @@
                      -L$BUILT_PREFIX/lib" \
             ARCHFLAGS="-arch x86_64" \
             FFLAGS="-arch x86_64" \
-            $SRC_DIR/configure --prefix="${PREFIX}" \
+            $SRC_DIR/configure \
+                --prefix="${PREFIX}" \
                 || exit 1
 
         make clean > /dev/null 2&>1 
@@ -224,8 +226,8 @@
     #----------------------------------
 
     echo "\nMaking MPFR fat binary...\n"
-    libversion=`grep dlname ${BUILT64_PREFIX}${PREFIX}/lib/libmpfr.la | sed -e "s|^.*=\'||" -e "s|\'$||"`
-    linkversions=`grep "library_names" ${BUILT64_PREFIX}${PREFIX}/lib/libmpfr.la | sed -e "s|^.*=\'||" -e "s|\'$||" | sed -e "s|$libversion||"`
+    libversion=`grep dlname ${BUILT64_PREFIX}${PREFIX}/lib/libmpfr.la | sed -e "s|^.*=\'||" -e "s|\'$||" || exit 1`
+    linkversions=`grep "library_names" ${BUILT64_PREFIX}${PREFIX}/lib/libmpfr.la | sed -e "s|^.*=\'||" -e "s|\'$||" | sed -e "s|$libversion||" || exit 1`
     run lipo -output ${BUILT_PREFIX}/lib/$libversion \
         -create ${BUILT32_PREFIX}${PREFIX}/lib/$libversion ${BUILT64_PREFIX}${PREFIX}/lib/$libversion  || exit 1
     run lipo -output ${BUILT_PREFIX}/lib/libmpfr.a  \

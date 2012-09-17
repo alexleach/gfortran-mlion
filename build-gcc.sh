@@ -23,6 +23,12 @@ mkdir -p ${DSYMDIR}
 
 TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
 
+
+BUILD_CXX=0
+if [ ! -z "`echo $LANGUAGES | grep 'c++'`" ] ; then
+    BUILD_CXX=1
+fi
+
 # e - Build GCC the Apple way
 #---------------------------------
 # From `GNUMakefile` :-
@@ -66,8 +72,8 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
 
     CFLAGS="-g -O2 ${RC_NONARCH_CFLAGS/-pipe/}"
     CPPFLAGS="-I/usr/include -I$BUILT_PREFIX/include"
-    CXXFLAGS="-I/usr/include/c++/$VERS"
-    LDFLAGS="-L/usr/lib -L$BUILT_PREFIX/lib"
+    CXXFLAGS=" -g -O2 -I/usr/include/c++/$VERS"
+    NON_ARM_CONFIGFLAGS="--with-gxx-include-dir=/usr/include/c++/$VERS"
 
     CONFIGFLAGS="--disable-checking \
       --enable-werror \
@@ -78,7 +84,7 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
       --program-transform-name=/^[cg][^.-]*$/s/$/-$MAJ_VERS/ \
       --with-slibdir=${PREFIX}/lib \
       --build=${TRIPLE} \
-      --enable-llvm=${BUILT_PREFIX} \
+      --enable-llvm=${SRC_DIR}/dst-llvm \
       --with-gmp=${BUILT_PREFIX} \
       --with-mpfr=${BUILT_PREFIX}"
 
@@ -123,6 +129,9 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     unset RC_DEBUG_OPTIONS
     make $MAKEFLAGS CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 2
     make $MAKEFLAGS html CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 3
+    if [ ! -z "`which runtest`" ] ; then
+        make $MAKEFLAGS check CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 3
+    fi
     make $MAKEFLAGS DESTDIR=$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD install-gcc install-target \
       CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 4
 
@@ -184,7 +193,7 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
       echo 'exec '${progpath}' -arch '${t}' "$@"' >> $P || exit 1
       chmod a+x $P || exit 1
     done
-    PATH=${BUILD_DIR}/bin:$PATH
+    PATH="${BUILD_DIR}/bin:$PATH"
 
 
     # Determine which cross-compilers we should build.  If our build architecture is
@@ -264,7 +273,8 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
       fi
     done
 
-    echo -e "Building the cross-hosted compilers for platforms: `echo $GCC_TARGETS | sed -e s/$GCC_BUILD// `" || exit 2
+    TGT=`echo $GCC_HOSTS | sed -e s/$GCC_BUILD// `
+    echo -e "Building the cross-hosted compilers for platforms: $TGT" || exit 2
 
 
     # Build the cross-hosted compilers.
@@ -318,13 +328,24 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
               echo "Making all for DESTDIR: $BUILD_DIR/dst-$h-$t"
               echo -e "--------------------------------------------\n"
               make $MAKEFLAGS all CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 21
+              echo "Checking $BUILD_DIR/dst-$h-$t"
+              echo -e "--------------------------------------------\n"
+              make $MAKEFLAGS -k check CFLAGS="$CFLAGS -I/usr/include/c++/$VERS" CXXFLAGS="$CFLAGS"
+              if [ ! "$?" = "0" ] ; then 
+                  echo Failed to run make $MAKEFLAGS -k check CFLAGS="$CFLAGS -I/usr/include/c++/$VERS" CXXFLAGS="$CFLAGS"
+                  exit 1
+              fi
               make $MAKEFLAGS DESTDIR=$BUILD_DIR/dst-$h-$t install-gcc install-target \
                   CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 22
           else
               echo "Making all-gcc for $BUILD_DIR/dst-$h-$t"
               echo -e "--------------------------------------------\n"
-              make $MAKEFLAGS all-gcc CFLAGS="$CFLAGS -I/usr/include/c++/$VERS" CXXFLAGS="$CFLAGS" \
-                  || echo -e "Failed program:- (retcode $?)\nPATH=$PATH\n\n$PWD/make all-gcc $MAKEFLAGS CFLAGS=$CFLAGS -I/usr/include/c++/$VERS CXXFLAGS=$CFLAGS"
+              make $MAKEFLAGS all-gcc CFLAGS="$CFLAGS -I/usr/include/c++/$VERS" CXXFLAGS="$CFLAGS"
+              if [ ! "$?" = "0" ] ; then 
+                  echo Failed to run make $MAKEFLAGS all-gcc CFLAGS="$CFLAGS -I/usr/include/c++/$VERS" CXXFLAGS="$CFLAGS"
+                  exit 1
+              fi
+                  
               echo "Done all-gcc for $BUILD_DIR/dst-$h-$t"
               echo -e "--------------------------------------------\n"
               make $MAKEFLAGS DESTDIR=$BUILD_DIR/dst-$h-$t install-gcc \
@@ -371,29 +392,29 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
       done
       ALTARCH=`echo $GCC_HOSTS | sed -e s/$t// | sed -e 's/ //g'`
       echo -e "GOT ALTARCH = $ALTARCH\n--------------------------\n"
-      echo -e "GOT GCC_HOSTS = $GCC_HOSTS\n--------------------------\n"
       echo -e "GOT GCC_BUILD = $GCC_BUILD\n--------------------------\n"
+      echo -e "GOT GCC_HOSTS = $GCC_HOSTS\n--------------------------\n"
+      echo -e "GOT GCC_TARGETS = $GCC_TARGETS\n--------------------------\n"
       ALTDL=/libexec/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS
       for f in $LIBEXEC_FILES ; do
         # LLVM LOCAL
         if file $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f | grep -q -E 'Mach-O (executable|dynamically linked shared library)' ; then
             # look for other architecture version
-            if [ -f "${BUILD_DIR}/dst-${ALTARCH}-${GCC_BUILD}${PREFIX}${ALTDL}/${f}" ] ; then
-                echo lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$ALTDL/$f \
-                    $BUILD_DIR/dst-$ALTARCH-$GCC_BUILD$PREFIX$DL/$f || exit 1
-                lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$ALTDL/$f \
-                    $BUILD_DIR/dst-$ALTARCH-$GCC_BUILD$PREFIX$DL/$f || exit 1
-            elif [ -f "${BUILD_DIR}/dst-${GCC_BUILD}-${ALTARCH}${PREFIX}${DL}/${f}" ] ; then
-                echo lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f \
-                    $BUILD_DIR/dst-$GCC_BUILD-$ALTARCH$PREFIX$DL/$f || exit 1
-                lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f \
-                    $BUILD_DIR/dst-$GCC_BUILD-$ALTARCH$PREFIX$DL/$f || exit 1
-            else
-                echo "Can't find ${BUILD_DIR}/dst-${GCC_BUILD}-${ALTARCH}${PREFIX}${DL}/${f} "
-                echo "Also no    ${BUILD_DIR}/dst-${ALTARCH}-${GCC_BUILD}${PREFIX}${ALTDL}/${f}"
-                echo lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f || exit 1
-                lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f || exit 1
-            fi
+            #if [ -f "${BUILD_DIR}/dst-${ALTARCH}-${GCC_BUILD}${PREFIX}${ALTDL}/${f}" ] ; then
+            #    echo lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$ALTDL/$f \
+            #        $BUILD_DIR/dst-$ALTARCH-$GCC_BUILD$PREFIX$DL/$f || exit 1
+            #    lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$ALTDL/$f \
+            #        $BUILD_DIR/dst-$ALTARCH-$GCC_BUILD$PREFIX$DL/$f || exit 1
+            #if [ -f "${BUILD_DIR}/dst-${GCC_BUILD}-${t}${PREFIX}${DL}/${f}" ] ; then
+                echo lipo -output .$DL/$f -create $BUILD_DIR/dst-*-$t$PREFIX$DL/$f #\
+                    #$BUILD_DIR/dst-$GCC_BUILD-$ALTARCH$PREFIX$DL/$f || exit 1
+                lipo -output .$DL/$f -create $BUILD_DIR/dst-*-$t$PREFIX$DL/$f 
+            #else
+            #    echo "Can't find ${BUILD_DIR}/dst-${GCC_BUILD}-${ALTARCH}${PREFIX}${DL}/${f} "
+            #    echo "Also no    ${BUILD_DIR}/dst-${ALTARCH}-${GCC_BUILD}${PREFIX}${ALTDL}/${f}"
+            #    echo lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f || exit 1
+            #    lipo -output .$DL/$f -create $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f || exit 1
+            #fi
         else
             cp -pv $BUILD_DIR/dst-$GCC_BUILD-$t$PREFIX$DL/$f .$DL/$f || exit 1
         fi
@@ -432,8 +453,10 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
       lipo -output ./bin/$t-apple-darwin$DARWIN_VERS-llvm-gcc-$MAJ_VERS -create \
         $BUILD_DIR/dst-*-$t/$PREFIX/bin/$t-apple-darwin$DARWIN_VERS-gcc-$VERS || exit 1
       # LLVM LOCAL build_gcc bug with non-/usr $PREFIX
-      lipo -output ./bin/$t-apple-darwin$DARWIN_VERS-llvm-g++-$MAJ_VERS -create \
-        $BUILD_DIR/dst-*-$t/$PREFIX/bin/$t-apple-darwin$DARWIN_VERS-*g++* || exit 1
+      if [ "$BUILD_CXX" = "1" ] ; then
+          lipo -output ./bin/$t-apple-darwin$DARWIN_VERS-llvm-g++-$MAJ_VERS -create \
+            $BUILD_DIR/dst-*-$t/$PREFIX/bin/$t-apple-darwin$DARWIN_VERS-*g++* || exit 1
+      fi
       # ALBL build_gfortran
       lipo -output ./bin/$t-apple-darwin$DARWIN_VERS-llvm-gfortran-$MAJ_VERS -create \
         $BUILD_DIR/dst-*-$t/$PREFIX/bin/$t-apple-darwin$DARWIN_VERS-*gfortran* || exit 1
@@ -461,23 +484,23 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
         if [ -f $baselibdir/$f -a -f $baselib64dir/$f ] ; then
             lipo -output $BUILT_PREFIX/lib/$f -create \
                 $baselibdir/$f $baselib64dir/$f || exit 1
-            install_name_tool -change ${BUILT_PREFIX}/lib/x86_64/$f \
-                ${PREFIX}/lib/$f $BUILT_PREFIX/lib/$f || exit 1
+#            install_name_tool -change ${BUILT_PREFIX}/lib/x86_64/$f \
+#                ${PREFIX}/lib/$f $BUILT_PREFIX/lib/$f || exit 1
 #            rm $baselibdir/$f $baselib64dir/$f
         elif [ -f $libdir/$f -a -f $lib64dir/$f ] ; then
             lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f -create \
                 $libdir/$f $lib64dir/$f || exit 1
-            install_name_tool -change ${BUILT_PREFIX}/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/x86_64/$f \
-                ${PREFIX}/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f \
-                $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f || exit 1
+#            install_name_tool -change ${BUILT_PREFIX}/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/x86_64/$f \
+#                ${PREFIX}/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f \
+#                $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f || exit 1
 #            rm $libdir/$f $lib64dir/$f
         else
             echo "Don't have 64bit version of $f in $baselib64dir or $lib64dir !!"
             cp -p $libdir/$f \
                 $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f || exit 1
-            install_name_tool -change ${BUILT_PREFIX}/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/x86_64/$f \
-                ${PREFIX}/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f \
-                $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f || exit 1
+#            install_name_tool -change ${BUILT_PREFIX}/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/x86_64/$f \
+#                ${PREFIX}/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f \
+#                $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f || exit 1
 #            rm $libdir/$f
         fi
     done
@@ -512,48 +535,51 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
 
     # Merge libgfortran and libgfortranbegin with lipo, then delete individuals.
     # libgfortranbegin is in $libdir
-    libbeginversion="`grep dlname $libdir/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
-    libbeginaltnames="`grep library_names $libdir/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$// -e s/$libbeginversion//`"
-    if [ ! -z "$libbeginversion" -a -d $libdir/x86_64 -a -f $libdir/x86_64/libgfortranbegin.la ] ; then
-        libbeginversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
-        echo running lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libbeginversion \
-            -create $libbegins
-        libbegins="$libdir/$libbeginversion $libbeginversion64"
-        lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libbeginversion -create $libbegins || exit 1
-        rm $libbegins
-    fi
-    cp $libdir/*.la $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS
+#    libbeginversion="`grep dlname $libdir/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
+#    libbeginaltnames="`grep library_names $libdir/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$// -e s/$libbeginversion//`"
+#    if [ ! -z "$libbeginversion" -a -d $libdir/x86_64 -a -f $libdir/x86_64/libgfortranbegin.la ] ; then
+#        libbeginversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
+#        echo running lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libbeginversion \
+#            -create $libbegins
+#        libbegins="$libdir/$libbeginversion $libbeginversion64"
+#        lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libbeginversion -create $libbegins || exit 1
+#        rm $libbegins
+#    fi
+#    cp $libdir/*.la $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS
+#
+#    cd $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS
+#    for f in $libbeginaltnames ; do ln -s $libbeginversion $f ; done
+#
+#    # libgfortran is in $baselibdir
+#    cd $BUILT_PREFIX/lib
+#    if [ -f $baselibdir/libgfortran.la ] ; then
+#        cp $baselibdir/libgfortran.la ./
+#        libdir="$baselibdir"
+#    elif [ -f $libdir/libgfortran.la ] ; then 
+#        cp $libdir/libgfortran.la ./
+#    fi
+#
+#    libgfortversion="`grep dlname libgfortran.la | sed -e s/^.*=\'// -e s/\'$//`"
+#    libgfortaltnames="`grep library_names libgfortran.la | sed -e s/^.*=\'// -e s/\'$// -e s/$libversion//`"
+#    if [ -d $libdir/x86_64 -a -f $libdir/x86_64/libgfortran.la ] ; then
+#        libgfortversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortran.la | sed -e s/^.*=\'// -e s/\'$//`"
+#    fi
+#    libgforts="$libdir/$libgfortversion $libgfortversion64"
+#    echo running lipo -output $BUILT_PREFIX/lib/$libgfortversion \
+#        -create $libgforts 
+#    lipo -output $BUILT_PREFIX/lib/$libgfortversion \
+#        -create $libgforts || exit 1
+#    install_name_tool -id "${PREFIX}/lib/$libgfortversion" \
+#        -change "${PREFIX}/lib/x86_64/$libgfortversion" "${PREFIX}/lib/$libgfortversion" \
+#        "${BUILT_PREFIX}/lib/$libgfortversion" || exit 1
+#    rm $libgforts
+#    for f in $libgfortaltnames ; do ln -s $libgfortversion $f ; done
 
-    cd $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS
-    for f in $libbeginaltnames ; do ln -s $libbeginversion $f ; done
-
-    # libgfortran is in $baselibdir
-    cd $BUILT_PREFIX/lib
-    if [ -f $baselibdir/libgfortran.la ] ; then
-        cp $baselibdir/libgfortran.la ./
-        libdir="$baselibdir"
-    elif [ -f $libdir/libgfortran.la ] ; then 
-        cp $libdir/libgfortran.la ./
-    fi
-
-    libgfortversion="`grep dlname libgfortran.la | sed -e s/^.*=\'// -e s/\'$//`"
-    libgfortaltnames="`grep library_names libgfortran.la | sed -e s/^.*=\'// -e s/\'$// -e s/$libversion//`"
-    if [ -d $libdir/x86_64 -a -f $libdir/x86_64/libgfortran.la ] ; then
-        libgfortversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortran.la | sed -e s/^.*=\'// -e s/\'$//`"
-    fi
-    libgforts="$libdir/$libgfortversion $libgfortversion64"
-    echo running lipo -output $BUILT_PREFIX/lib/$libgfortversion \
-        -create $libgforts 
-    lipo -output $BUILT_PREFIX/lib/$libgfortversion \
-        -create $libgforts || exit 1
-    rm $libgforts
-    for f in $libgfortaltnames ; do ln -s $libgfortversion $f ; done
-
-#    for t in $GCC_TARGETS ; do
-#      # LLVM LOCAL build_gcc bug with non-/usr $PREFIX
-#      cp -vRp $BUILD_DIR/dst-$GCC_BUILD-$t/$PREFIX/lib/gcc/$t-apple-darwin$DARWIN_VERS \
-#        ${BUILT_PREFIX}/lib/gcc || exit 1
-#    done
+    for t in $GCC_TARGETS ; do
+      # LLVM LOCAL build_gcc bug with non-/usr $PREFIX
+      cp -vRp $BUILD_DIR/dst-$GCC_BUILD-$t/$PREFIX/lib/gcc/$t-apple-darwin$DARWIN_VERS \
+        ${BUILT_PREFIX}/lib/gcc || exit 1
+    done
     echo -e "Done libs\n---- ----"
 
     # APPLE LOCAL begin native compiler support
@@ -630,10 +656,10 @@ TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
     fi
     for t in $GCC_TARGETS ; do
       # LLVM LOCAL begin
-      ln -f $SRC_DIR/gcc/doc/llvm-gcc.1 $MDIR/$t-apple-darwin$DARWIN_VERS-llvm-gcc.1 \
+      ln -f $MDIR/llvm-gcc.1 $MDIR/$t-apple-darwin$DARWIN_VERS-llvm-gcc.1 \
           || exit 1
       if [ "$BUILD_CXX" = "1" ]; then
-        ln -f $MDIR/gcc/doc/llvm-g++.1 $MDIR/$t-apple-darwin$DARWIN_VERS-llvm-g++.1 \
+        ln -f $MDIR/llvm-g++.1 $MDIR/$t-apple-darwin$DARWIN_VERS-llvm-g++.1 \
             || exit 1
       fi
       # LLVM LOCAL end

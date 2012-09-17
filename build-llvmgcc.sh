@@ -21,15 +21,15 @@ SRC_DIR="${PWD}/${LLVM_VERSION}"
 # Fake install prefixes.
 #BUILT32_PREFIX="${PWD}/install-i386/usr/local"
 #BUILT64_PREFIX="${PWD}/install-x86_64/usr/local"
-BUILT_PREFIX="${PWD}/install${PREFIX}"
+BUILT_PREFIX="${SRC_DIR}/dst-llvm"
 #mkdir -p $BUILT32_PREFIX $BUILT64_PREFIX $BUILT_PREFIX
 
 # Compiled object directory
-BUILD_DIR=${SRC_DIR}/build
+BUILD_DIR=${SRC_DIR}/obj-llvm
 mkdir -p ${BUILD_DIR}
 
 # Debug symbol directory
-DSYMDIR="${SRC_DIR}/debug"
+DSYMDIR="${SRC_DIR}/debug-llvm"
 mkdir -p ${DSYMDIR}
 
 TRIPLE="${BUILD_ARCH}-apple-darwin${DARWIN_VERS}"
@@ -39,9 +39,10 @@ TRIPLE="${BUILD_ARCH}-apple-darwin${DARWIN_VERS}"
 # b - Build LLVM, then GCC, if make.checked doesn't exist
 #--------------------------------------------------------
 
+cd ${BUILD_DIR}
+
 if [ ! -f make.checked ] ; then
 
-    cd ${BUILD_DIR}
 
     if [ -f Makefile ] ; then
         echo "Cleaning build directory"
@@ -97,23 +98,24 @@ if [ ! -f make.checked ] ; then
 #          --disable-bindings \
 #          || exit 1
 
-    if [ ! -f Makefile.config ] ; then
-    CC="clang" \
-        CXX="clang++" \
-        CPPFLAGS="-I/usr/include -I/usr/include/c++/4.2.1 -I${SRC_DIR}/gcc" \
+    #if [ ! -f Makefile.config ] ; then
+#    CC="`which clang`" \
+#        CXX="`which clang++`" \
+        CPPFLAGS="-I/usr/include -I/usr/include/c++/4.2.1" \
         ${SRC_DIR}/llvmCore/configure \
-            --prefix="${PREFIX}" \
+            --prefix="${BUILT_PREFIX}" \
             --enable-targets=arm,x86,cbe \
             --enable-assertions=no \
             --enable-optimized=yes \
-            --disable-bindings \
-            --with-gmp=$BUILT_DIR \
-            --with-mpfr=$BUILT_DIR  || exit 1
+            --disable-bindings || exit 1
+            #--with-gmp=$BUILT_DIR \
+            #--with-mpfr=$BUILT_DIR  || exit 1
 
 #            --target=${TRIPLE} \
 #            --host=${TRIPLE} \
 #            --build=${TRIPLE} \
-    fi
+    #fi
+    make clean || exit 1
 
     echo sed -i "" -e '/[Aa]pple-style/d' -e '/include.*GNUmakefile/d' "${SRC_DIR}/llvmCore/Makefile" || exit 1
     sed -i "" -e '/[Aa]pple-style/d' -e '/include.*GNUmakefile/d' "${SRC_DIR}/llvmCore/Makefile" || exit 1
@@ -130,15 +132,15 @@ if [ ! -f make.checked ] ; then
         VERBOSE=1    || exit 1
 
     # Install the tree into the (cleaned) destination directory.
-    CPPFLAGS="-I/usr/include" \
-    CXXFLAGS="-I/usr/include/c++/4.2.1" \
+#    CPPFLAGS="-I/usr/include" \
+#    CXXFLAGS="-I/usr/include/c++/4.2.1" \
     make -j${N_MAKE} UNIVERSAL=1 UNIVERSAL_ARCH="i386 x86_64" \
         NO_RUNTIME_LIBS=1 \
         DISABLE_EDIS=1 \
         DEBUG_SYMBOLS=1 \
         LLVM_SUBMIT_VERSION=$LLVM_VERSION_MAJOR \
         LLVM_SUBMIT_SUBVERSION=$LLVM_VERSION_MINOR \
-        OPTIMIZE_OPTION='-O3' VERBOSE=1 install || exit 1
+        OPTIMIZE_OPTION='-O3' VERBOSE=1 unittests install || exit 1
 
 
     # Install Version.h
@@ -181,9 +183,13 @@ if [ ! -f make.checked ] ; then
     ##### CREATE DEBUGGING SYMBOLS
 
     # Clean out SYM_DIR in case -noclean was passed to buildit.
+    echo "Cleaning debug dir: ${DSYMDIR}"
+    echo "------------------"
     cd ${DSYMDIR}
     rm -rf ./* || exit 1
 
+    echo "Generating new dSYM files"
+    echo "-------------------------"
     # Generate .dSYM files
     find $BUILT_PREFIX -perm -0111 -type f \
         ! \( -name '*.la' -o -name gccas -o -name gccld -o -name llvm-config -o -name '*.a' \) \
@@ -197,7 +203,7 @@ if [ ! -f make.checked ] ; then
     # Save source files.
     mkdir $DSYMDIR/src || exit 1
     cd $BUILD_DIR || exit 1
-    find obj-* -name \*.\[chy\] -o -name \*.cpp -print \
+    find .* -name \*.\[chy\] -o -name \*.cpp -print \
         | cpio -pdml $DSYMDIR/src || exit 1
 
     ################################################################################

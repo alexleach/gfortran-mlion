@@ -52,11 +52,11 @@ BUILT_PREFIX="${PWD}/install${PREFIX}"
     echo "We're now ready to install! "
     echo "Installing into ${PREFIX}"
 
-    ditto -v "${BUILT_PREFIX}" "${PREFIX}" 
+    ditto -v "${BUILT_PREFIX}" "${PREFIX}" 2> /dev/null
     retcode="$?"
     if [ "$retcode" = "1" ] ; then # no permissions
         echo "Error! Error code: $retcode!"
-        echo "If there are a load of permission errors above, run the following command:-"
+        echo "Probably a permission error. You can install with the command:-"
         echo sudo ditto -v "${BUILT_PREFIX}" "$PREFIX"
     fi
 
