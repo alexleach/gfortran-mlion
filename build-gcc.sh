@@ -129,9 +129,9 @@ fi
     unset RC_DEBUG_OPTIONS
     make $MAKEFLAGS CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 2
     make $MAKEFLAGS html CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 3
-    if [ ! -z "`which runtest`" ] ; then
-        make $MAKEFLAGS check CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 3
-    fi
+    #if [ ! -z "`which runtest`" ] ; then
+    #    make $MAKEFLAGS check CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 3
+    #fi
     make $MAKEFLAGS DESTDIR=$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD install-gcc install-target \
       CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 4
 
@@ -377,7 +377,7 @@ fi
 
     # exclude fsf-funding.7 gfdl.7 gpl.7 as they are currently built in
     # the gcc project
-    #rm -rf $BUILT_PREFIX/share/man/man7
+    rm -rf $BUILT_PREFIX/share/man/man7
 
     # libexec # 
     cd $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/libexec/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS \
@@ -480,7 +480,7 @@ fi
 
     echo "Copying over native static archives"
     echo -e "----------------------------\n"
-    for f in `echo libgcc.a libgcc_eh.a libgcov.a libgfortranbegin.a libgfortran.a` ; do
+    for f in libgcc.a libgcc_eh.a libgcov.a libgfortranbegin.a libgfortran.a libiberty.a ; do
         if [ -f $baselibdir/$f -a -f $baselib64dir/$f ] ; then
             lipo -output $BUILT_PREFIX/lib/$f -create \
                 $baselibdir/$f $baselib64dir/$f || exit 1
@@ -513,7 +513,7 @@ fi
     #crosslib64dir="$libdir/x86_64"
     echo "Copying over crossed static archives" # did have libcc_kext, but saw that's been dealt with.
     echo -e "----------------------------\n"
-    for f in `echo libgcc_static.a` ; do
+    for f in libgcc_static.a ; do
         if [ -f $crossbaselibdir/$f -a -f $baselibdir/$f ] ; then
             lipo -output $BUILT_PREFIX/lib/$f -create \
                 $crossbaselibdir/$f $baselibdir/$f || exit 1
@@ -534,85 +534,99 @@ fi
     echo -e "-------------------\n"
 
     # Merge libgfortran and libgfortranbegin with lipo, then delete individuals.
-    # libgfortranbegin is in $libdir
-#    libbeginversion="`grep dlname $libdir/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
-#    libbeginaltnames="`grep library_names $libdir/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$// -e s/$libbeginversion//`"
-#    if [ ! -z "$libbeginversion" -a -d $libdir/x86_64 -a -f $libdir/x86_64/libgfortranbegin.la ] ; then
-#        libbeginversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
-#        echo running lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libbeginversion \
-#            -create $libbegins
-#        libbegins="$libdir/$libbeginversion $libbeginversion64"
-#        lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libbeginversion -create $libbegins || exit 1
-#        rm $libbegins
-#    fi
-#    cp $libdir/*.la $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS
-#
-#    cd $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS
-#    for f in $libbeginaltnames ; do ln -s $libbeginversion $f ; done
-#
-#    # libgfortran is in $baselibdir
-#    cd $BUILT_PREFIX/lib
-#    if [ -f $baselibdir/libgfortran.la ] ; then
-#        cp $baselibdir/libgfortran.la ./
-#        libdir="$baselibdir"
-#    elif [ -f $libdir/libgfortran.la ] ; then 
-#        cp $libdir/libgfortran.la ./
-#    fi
-#
-#    libgfortversion="`grep dlname libgfortran.la | sed -e s/^.*=\'// -e s/\'$//`"
-#    libgfortaltnames="`grep library_names libgfortran.la | sed -e s/^.*=\'// -e s/\'$// -e s/$libversion//`"
-#    if [ -d $libdir/x86_64 -a -f $libdir/x86_64/libgfortran.la ] ; then
-#        libgfortversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortran.la | sed -e s/^.*=\'// -e s/\'$//`"
-#    fi
-#    libgforts="$libdir/$libgfortversion $libgfortversion64"
-#    echo running lipo -output $BUILT_PREFIX/lib/$libgfortversion \
-#        -create $libgforts 
-#    lipo -output $BUILT_PREFIX/lib/$libgfortversion \
-#        -create $libgforts || exit 1
-#    install_name_tool -id "${PREFIX}/lib/$libgfortversion" \
-#        -change "${PREFIX}/lib/x86_64/$libgfortversion" "${PREFIX}/lib/$libgfortversion" \
-#        "${BUILT_PREFIX}/lib/$libgfortversion" || exit 1
-#    rm $libgforts
-#    for f in $libgfortaltnames ; do ln -s $libgfortversion $f ; done
+    # $libdir - libgfortranbegin
+        libbeginversion="`grep dlname $libdir/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
+        libbeginaltnames="`grep library_names $libdir/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$// -e s/$libbeginversion//`"
+        if [ ! -z "$libbeginversion" -a -d $libdir/x86_64 -a -f $libdir/x86_64/libgfortranbegin.la ] ; then
+            libbeginversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
+            libbegins="$libdir/$libbeginversion $libbeginversion64"
+            echo running lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libbeginversion \
+                -create $libbegins
+            lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libbeginversion \
+                -create $libbegins || exit 1
+            cp $libdir/libgfortranbegin.la $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/
+            # link alternative libgfortranbegin names
+            cd $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS
+            for f in $libbeginaltnames ; do ln -s $libbeginversion $f ; done
+        fi
 
-    for t in $GCC_TARGETS ; do
-      # LLVM LOCAL build_gcc bug with non-/usr $PREFIX
-      cp -vRp $BUILD_DIR/dst-$GCC_BUILD-$t/$PREFIX/lib/gcc/$t-apple-darwin$DARWIN_VERS \
-        ${BUILT_PREFIX}/lib/gcc || exit 1
-    done
-    echo -e "Done libs\n---- ----"
+
+    # $baselibdir 
+        # libgfortran
+        cd $BUILT_PREFIX/lib
+        if [ -f $baselibdir/libgfortran.la ] ; then
+            cp $baselibdir/libgfortran.la ./
+            libdir="$baselibdir"
+        elif [ -f $libdir/libgfortran.la ] ; then 
+            cp $libdir/libgfortran.la ./
+        fi
+
+        libgfortversion="`grep dlname libgfortran.la | sed -e s/^.*=\'// -e s/\'$//`"
+        libgfortaltnames="`grep library_names libgfortran.la | sed -e s/^.*=\'// -e s/\'$// -e s/$libversion//`"
+        if [ -d $libdir/x86_64 -a -f $libdir/x86_64/libgfortran.la ] ; then
+            libgfortversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortran.la | sed -e s/^.*=\'// -e s/\'$//`"
+        fi
+        libgforts="$libdir/$libgfortversion $libgfortversion64"
+        echo running lipo -output $BUILT_PREFIX/lib/$libgfortversion \
+            -create $libgforts 
+        lipo -output $BUILT_PREFIX/lib/$libgfortversion \
+            -create $libgforts || exit 1
+        install_name_tool -id "${PREFIX}/lib/$libgfortversion" \
+            -change "${PREFIX}/lib/x86_64/$libgfortversion" "${PREFIX}/lib/$libgfortversion" \
+            "${BUILT_PREFIX}/lib/$libgfortversion" || exit 1
+        # link alternatives
+        for f in $libgfortaltnames ; do ln -s $libgfortversion $f ; done
+
+        # libgcc_s.1.dylib, libgcc_s.10.4.dylib, libgcc_s.10.5.dylib, 
+        # These have already been built with universal architectures...
+        for f in libgcc_s.1.dylib libgcc_s.10.4.dylib libgcc_s.10.5.dylib ; do
+            lipo -output $BUILT_PREFIX/lib/$f -create \
+                $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/lib/$f \
+                $BUILD_DIR/dst-$GCC_BUILD-x86_64$PREFIX/lib/$f || cp \
+                $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/lib/$f \
+                $BUILT_PREFIX/lib/$f 
+        done
+
+    # Surely this would overwrite any previous architecture builds in ${BUILT_PREFIX}/lib/gcc.
+#    for t in $GCC_TARGETS ; do
+#      # LLVM LOCAL build_gcc bug with non-/usr $PREFIX
+#      cp -vRp $BUILD_DIR/dst-$GCC_BUILD-$t/$PREFIX/lib/gcc/$t-apple-darwin$DARWIN_VERS \
+#        ${BUILT_PREFIX}/lib/gcc || exit 1
+#    done
 
     # APPLE LOCAL begin native compiler support
     # libgomp is not built for ARM
     LIBGOMP_TARGETS=`echo $GCC_TARGETS | sed -E -e 's/(^|[[:space:]])arm($|[[:space:]])/ /'`
     LIBGOMP_HOSTS=`echo $GCC_HOSTS | $OMIT_X86_64 | sed -E -e 's/(^|[[:space:]])arm($|[[:space:]])/ /'`
 
-    # And copy libgomp stuff by hand...
+    # And copy libgomp stuff by hand... 
     echo "Copying libgomp stuff. PWD = ${PWD}"
-    for t in $LIBGOMP_TARGETS ; do
-        for h in $LIBGOMP_HOSTS ; do
-            if [ $h != $t ] ; then
-                mkdir -p ./lib/gcc/$t-apple-darwin$DARWIN_VERS/$VERS
-                cp -pv $BUILD_DIR/dst-$h-$t$PREFIX/lib/libgomp.a \
-                    ./lib/gcc/$t-apple-darwin$DARWIN_VERS/$VERS/ || exit 1
-                cp -pv $BUILD_DIR/dst-$h-$t$PREFIX/lib/libgomp.spec \
-                    ./lib/gcc/$t-apple-darwin$DARWIN_VERS/$VERS/ || exit 1
-                if [ $h = 'powerpc' ] ; then
-                    cp -vp $BUILD_DIR/dst-$h-$t$PREFIX/lib/ppc64/libgomp.a \
-                        ./lib/gcc/$t-apple-darwin$DARWIN_VERS/$VERS/ppc64/
-                    cp -vp $BUILD_DIR/dst-$h-$t$PREFIX/lib/ppc64/libgomp.spec \
-                        ./lib/gcc/$t-apple-darwin$DARWIN_VERS/$VERS/ppc64/
-                elif [ $h = 'i686' ] ; then
-                    cp -vp $BUILD_DIR/dst-$h-$t$PREFIX/lib/x86_64/libgomp.a \
-                        ./lib/gcc/$t-apple-darwin$DARWIN_VERS/$VERS/x86_64/ || exit 1
-                    cp -vp $BUILD_DIR/dst-$h-$t$PREFIX/lib/x86_64/libgomp.spec \
-                        ./lib/gcc/$t-apple-darwin$DARWIN_VERS/$VERS/x86_64/ || exit 1
-                fi
-            fi
-        done
+    echo "LIBGOMP_TARGETS = $LIBGOMP_TARGETS"
+    echo "LIBGOMP_HOSTS = $LIBGOMP_HOSTS"
+    #libdir="lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS"
+    libdir="lib"
+    libgompversion="`grep dlname $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/libgomp.la | sed -e s/^.*=\'// -e s/\'$// || exit 1`"
+    libgompaltnames="`grep library_names $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/libgomp.la | sed -e s/^.*=\'// -e s/\'$// -e s/$libgompversion// || exit 1`"
+    #libgomp.la, libgomp.x.dylib, libgomp.a, libgomp.spec
+    cp -vp "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/libgomp.la"   "$BUILT_PREFIX/$libdir/" || exit 1
+    cp -vp "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/libgomp.spec" "$BUILT_PREFIX/$libdir/" || exit 1
+    # dylib
+    lipo -output "${BUILT_PREFIX}/$libdir/$libgompversion" -create \
+        "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/$libgompversion" \
+        "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/x86_64/$libgompversion" || exit 1
+    install_name_tool -id "$PREFIX/$libdir/$libgompversion" -change \
+        "$PREFIX/$libdir/x86_64/$libgompversion" "$PREFIX/$libdir/$libgompversion" \
+        "${BUILT_PREFIX}/$libdir/$libgompversion" || exit 1
+    cd $BUILT_PREFIX/$libdir
+    for f in $libgompaltnames ; do
+        ln -s $libgompversion $f
     done
-    # APPLE LOCAL end native compiler support
-    echo -e "Done\n----"
+    # archive
+    lipo -output "${BUILT_PREFIX}/$libdir/libgomp.a" -create \
+        "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/libgomp.a" \
+        "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/x86_64/libgomp.a" || exit 1
+
+    echo -e "Done libs\n---------"
 
     echo "Copying include"
     echo "---------------"
@@ -722,12 +736,12 @@ fi
 
 
     # LLVM LOCAL begin
-    lipo -output $BUILT_PREFIX/bin/llvm-gcc-$MAJ_VERS -create \
-      $BUILT_PREFIX/bin/tmp-*-llvm-gcc-$MAJ_VERS || exit 1
+    lipo -output "$BUILT_PREFIX/bin/llvm-gcc-$MAJ_VERS" \
+        -create $BUILT_PREFIX/bin/tmp-*-llvm-gcc-$MAJ_VERS || exit 1
     rm $BUILT_PREFIX/bin/tmp-*-llvm-gcc-$MAJ_VERS || exit 1
 
-    lipo -output $BUILT_PREFIX/bin/llvm-gfortran-$MAJ_VERS -create \
-      $BUILT_PREFIX/bin/tmp-*-llvm-gfortran-$MAJ_VERS || exit 1
+    lipo -output $BUILT_PREFIX/bin/llvm-gfortran-$MAJ_VERS \
+        -create $BUILT_PREFIX/bin/tmp-*-llvm-gfortran-$MAJ_VERS || exit 1
     rm $BUILT_PREFIX/bin/tmp-*-llvm-gfortran-$MAJ_VERS || exit 1
 
     if [ "$BUILD_CXX" = "1" ]; then
@@ -794,9 +808,9 @@ fi
     ln -s -f   llvm-gcc-$MAJ_VERS        llvm-gcc || exit 1
     ln -s -f   llvm-g++-$MAJ_VERS        llvm-g++ || exit 1
     ln -s -f   llvm-gfortran-$MAJ_VERS   llvm-gfortran || exit 1
-    ln -s -f   llvm-gcc        gcc || exit 1
-    ln -s -f   llvm-g++        g++ || exit 1
-    ln -s -f   llvm-gfortran   gfortran || exit 1
+    ln -s -f   llvm-gcc                  gcc || exit 1
+    ln -s -f   llvm-g++                  g++ || exit 1
+    ln -s -f   llvm-gfortran             gfortran || exit 1
 
     # FIXME: This is a hack to get things working.
     #for t in $GCC_TARGETS ; do
@@ -853,39 +867,7 @@ fi
     chgrp -R staff $BUILT_PREFIX
 
 
-    # Done!
-    exit 0
-
-
-    # what i started with...
-#
-#    CPPFLAGS="-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/usr/include \
-#              -I/usr/include \
-#              -I/usr/local/include" \
-#        LDFLAGS="-arch x86_64 -arch i386 \
-#                 -O2 \
-#                 -L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/usr/lib \
-#                 -L/usr/lib \
-#                 -L/usr/local/lib" \
-#        ARCHFLAGS="-arch x86_64 -arch i386" \
-#        FFLAGS="-arch x86_64 -arch i386" \
-#        ${SRC_DIR}/configure \
-#            --disable-checking \
-#            --enable-werror \
-#            --prefix="${PREFIX}" \
-#            --mandir=${PREFIX}/share/man \
-#            --enable-languages=${COMPILE_LANGS} \
-#            --program-prefix=llvm- \
-#            --program-transform-name='/^[cg][^.-]*$/s/$/-4.2' \
-#            --with-slibdir=/usr/lib \
-#            --build=${TRIPLE} \
-#            --host=${TRIPLE} \
-#            --target=${TRIPLE} \
-#            --enable-llvm=${XCODE_LLVM} \
-#            --program-prefix="${TRIPLE}-" \
-#            --with-gxx-include-dir=/usr/include/c++/4.2.1        #\
-#            #--enable-targets=x86_64,powerpc \
-#            #--enable-optimized  
-#
+# Done!
+exit 0
 
 
