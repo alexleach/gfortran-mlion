@@ -1,0 +1,107 @@
+diff -u ../fresh/llvmgcc42-2336.11/gcc/fortran/gfortranspec.c ./llvmgcc42-2336.11/gcc/fortran/gfortranspec.c
+--- ../fresh/llvmgcc42-2336.11/gcc/fortran/gfortranspec.c	2007-07-11 22:32:42.000000000 +0100
++++ ./llvmgcc42-2336.11/gcc/fortran/gfortranspec.c	2012-09-15 02:19:00.000000000 +0100
+@@ -347,7 +347,7 @@
+ 	  printf ("GNU Fortran (GCC) %s\n", version_string);
+ 	  printf ("Copyright %s 2007 Free Software Foundation, Inc.\n\n",
+ 	          _("(C)"));
+-	  printf (_("GNU Fortran comes with NO WARRANTY, to the extent permitted by law.\n\
++	  printf ("%s",_("GNU Fortran comes with NO WARRANTY, to the extent permitted by law.\n\
+ You may redistribute copies of GNU Fortran\n\
+ under the terms of the GNU General Public License.\n\
+ For more information about these matters, see the file named COPYING\n\n"));
+@@ -525,7 +525,7 @@
+ 
+   if (verbose && g77_newargv != g77_xargv)
+     {
+-      fprintf (stderr, _("Driving:"));
++      fprintf (stderr, "%s", _("Driving:"));
+       for (i = 0; i < g77_newargc; i++)
+ 	fprintf (stderr, " %s", g77_newargv[i]);
+       fprintf (stderr, "\n");
+diff -u ../fresh/llvmgcc42-2336.11/gcc/fortran/resolve.c ./llvmgcc42-2336.11/gcc/fortran/resolve.c
+--- ../fresh/llvmgcc42-2336.11/gcc/fortran/resolve.c	2007-07-11 22:32:42.000000000 +0100
++++ ./llvmgcc42-2336.11/gcc/fortran/resolve.c	2012-09-24 16:04:49.000000000 +0100
+@@ -4569,9 +4569,12 @@
+                           "inconsistent shape", &cnext->expr->where);
+               break;
+ 
+-	    case EXEC_ASSIGN_CALL:
+-	      resolve_call (cnext);
+-	      break;
++            case EXEC_ASSIGN_CALL:
++              resolve_call (cnext);
++              if (!cnext->resolved_sym->attr.elemental)
++                gfc_error("Non-ELEMENTAL user-defined assignment in WHERE at %L",
++                          &cnext->ext.actual->expr->where);
++              break;
+ 
+             /* WHERE or WHERE construct is part of a where-body-construct */
+             case EXEC_WHERE:
+diff -u ../fresh/llvmgcc42-2336.11/gcc/fortran/trans-intrinsic.c ./llvmgcc42-2336.11/gcc/fortran/trans-intrinsic.c
+--- ../fresh/llvmgcc42-2336.11/gcc/fortran/trans-intrinsic.c	2007-07-11 22:32:42.000000000 +0100
++++ ./llvmgcc42-2336.11/gcc/fortran/trans-intrinsic.c	2012-09-24 16:10:22.000000000 +0100
+@@ -1879,6 +1879,7 @@
+   tree tmp;
+   tree elsetmp;
+   tree ifbody;
++  tree offset;
+   gfc_loopinfo loop;
+   gfc_actual_arglist *actual;
+   gfc_ss *arrayss;
+@@ -1898,6 +1899,7 @@
+ 
+   /* Initialize the result.  */
+   pos = gfc_create_var (gfc_array_index_type, "pos");
++  offset = gfc_create_var (gfc_array_index_type, "offset");
+   type = gfc_typenode_for_spec (&expr->ts);
+ 
+   /* Walk the arguments.  */
+@@ -1996,15 +1998,28 @@
+   /* Assign the value to the limit...  */
+   gfc_add_modify_expr (&ifblock, limit, arrayse.expr);
+ 
+-  /* Remember where we are.  */
+-  gfc_add_modify_expr (&ifblock, pos, loop.loopvar[0]);
++  /* Remember where we are.  An offset must be added to the loop
++     counter to obtain the required position.  */
++  if (loop.temp_dim)
++    tmp = build_int_cst (gfc_array_index_type, 1);
++  else
++    tmp =fold_build2 (MINUS_EXPR, gfc_array_index_type,
++			 gfc_index_one_node, loop.from[0]);
++  gfc_add_modify_expr (&block, offset, tmp);
++
++  tmp = build2 (PLUS_EXPR, TREE_TYPE (pos),
++		loop.loopvar[0], offset);
++  gfc_add_modify_expr (&ifblock, pos, tmp);
+ 
+   ifbody = gfc_finish_block (&ifblock);
+ 
+-  /* If it is a more extreme value or pos is still zero.  */
++  /* If it is a more extreme value or pos is still zero and the value
++     equal to the limit.  */
++  tmp = build2 (TRUTH_AND_EXPR, boolean_type_node,
++		build2 (EQ_EXPR, boolean_type_node, pos, gfc_index_zero_node),
++		build2 (EQ_EXPR, boolean_type_node, arrayse.expr, limit));
+   tmp = build2 (TRUTH_OR_EXPR, boolean_type_node,
+-		  build2 (op, boolean_type_node, arrayse.expr, limit),
+-		  build2 (EQ_EXPR, boolean_type_node, pos, gfc_index_zero_node));
++		build2 (op, boolean_type_node, arrayse.expr, limit), tmp);
+   tmp = build3_v (COND_EXPR, tmp, ifbody, build_empty_stmt ());
+   gfc_add_expr_to_block (&block, tmp);
+ 
+@@ -2049,12 +2064,7 @@
+     }
+   gfc_cleanup_loop (&loop);
+ 
+-  /* Return a value in the range 1..SIZE(array).  */
+-  tmp = fold_build2 (MINUS_EXPR, gfc_array_index_type, loop.from[0],
+-		     gfc_index_one_node);
+-  tmp = fold_build2 (MINUS_EXPR, gfc_array_index_type, pos, tmp);
+-  /* And convert to the required type.  */
+-  se->expr = convert (type, tmp);
++  se->expr = convert (type, pos);
+ }
+ 
+ static void

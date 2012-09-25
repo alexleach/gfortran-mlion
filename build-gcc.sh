@@ -80,7 +80,6 @@ fi
       --prefix=${PREFIX} \
       --mandir=${PREFIX}/share/man \
       --enable-languages=${LANGUAGES} \
-      --program-prefix=llvm- \
       --program-transform-name=/^[cg][^.-]*$/s/$/-$MAJ_VERS/ \
       --with-slibdir=${PREFIX}/lib \
       --build=${TRIPLE} \
@@ -96,9 +95,8 @@ fi
 
     unset LANGUAGES
 
-    # Patch gfortranspec.c
-    patch -Nu $SRC_DIR/gcc/fortran/gfortranspec.c ${SRC_DIR}/../patch/gfortranspec.c.diff
-
+    # Patch gcc/fortran/ files with GCC-4.2.4 updates
+    patch -p1  < ./patch/gcc.fortran.diff
 
     # Here, the build_gcc script compiles a native compiler. We'll skip that, 
     # and use Xcode compilers instead. No we won't. Need the llvm- prefix...
@@ -119,6 +117,7 @@ fi
     cd $BUILD_DIR/obj-$GCC_BUILD-$GCC_BUILD || exit 1
     if [ \! -f Makefile ]; then
      $SRC_DIR/configure $CONFIGFLAGS $NON_ARM_CONFIGFLAGS \
+       --program-prefix=llvm- \
        --host=$GCC_BUILD-apple-darwin$DARWIN_VERS \
        --target=$GCC_BUILD-apple-darwin$DARWIN_VERS || exit 1
     fi
@@ -530,6 +529,10 @@ fi
         fi
     done
 
+    lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/crt3.o  -create \
+        $BUILD_DIR/dst-$GCC_BUILD-*/usr/local/lib/gcc/*-apple-darwin$DARWIN_VERS/$VERS/crt3.o || exit 1
+        #$BUILD_DIR/dst-$GCC_BUILD-x86_64/usr/local/lib/gcc/x86_64-apple-darwin12/4.2.1/crt3.o
+
     echo "Copying over dylibs (libgfortran.dylib & libgfortranbegin.dylib)"
     echo -e "-------------------\n"
 
@@ -579,13 +582,17 @@ fi
 
         # libgcc_s.1.dylib, libgcc_s.10.4.dylib, libgcc_s.10.5.dylib, 
         # These have already been built with universal architectures...
-        for f in libgcc_s.1.dylib libgcc_s.10.4.dylib libgcc_s.10.5.dylib ; do
-            lipo -output $BUILT_PREFIX/lib/$f -create \
-                $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/lib/$f \
-                $BUILD_DIR/dst-$GCC_BUILD-x86_64$PREFIX/lib/$f || cp \
-                $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/lib/$f \
-                $BUILT_PREFIX/lib/$f 
-        done
+        # As per the libgcc_* files in /usr/lib, we'll just create libgcc_s.10.5.dylib, 
+        #  and link the rest to /usr/lib/libSystem.B.dylib
+        f=libgcc_s.10.5.dylib
+        lipo -output $BUILT_PREFIX/lib/$f -create \
+            $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/lib/$f \
+            $BUILD_DIR/dst-$GCC_BUILD-x86_64$PREFIX/lib/$f    || cp -vp \
+            $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/lib/$f \
+            $BUILT_PREFIX/lib/$f 
+        ln -sf /usr/lib/libSystem.B.dylib $BUILT_PREFIX/lib/libgcc_s.1.dylib
+        cd $BUILD_PREFIX/lib
+        ln -sf libgcc_s.10.5.dylib libgcc_s.10.4.dylib
 
     # Surely this would overwrite any previous architecture builds in ${BUILT_PREFIX}/lib/gcc.
 #    for t in $GCC_TARGETS ; do
