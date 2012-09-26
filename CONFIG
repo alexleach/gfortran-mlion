@@ -1,0 +1,87 @@
+#!/bin/bash
+
+
+###############################################################################
+#    USER CONFIGURED VARIABLES
+###############################################################################
+
+
+# PREFIX - Installation prefix
+#=============================
+
+# Files will be installed into:-
+#  <PREFIX>/bin
+#  <PREFIX>/lib 
+#  <PREFIX>/share etc.
+
+PREFIX="/usr/local"
+
+
+# Versions for download.
+#======================
+# Packages will be downloaded from:-
+#    ftp://ftp.gmplib.org/pub/gmp-<GMP_VERSION>/gmp-<GMP_VERSION>.tar.gz
+#    http://www.mpfr.org/mpfr-<MPFR_VERSION>/mpfr-<MPFR_VERSION>.tar.gz"
+#    http://opensource.apple.com/tarballs/llvmgcc42/<LLVM_VERSION>.tar.gz
+
+GMP_VERSION="4.3.2"
+MPFR_VERSION="3.1.1"
+LLVM_VERSION="llvmgcc42-2336.11"
+
+# Languages for which compilers should be built.
+#  A C compiler will always be built.
+
+LANGUAGES=${LANGUAGES-c,objc,c++,obj-c++,fortran}
+
+# Number of processes, N for parallel make builds.
+#================================================
+N_MAKE=$[`sysctl -n hw.ncpu`*3/2]
+
+# Location of native llvm that comes with Xcode. 
+# These are put in /usr/llvm-gcc-4.2 by Xcode 4.4 Command line Utilities.
+# Or they might be in /Applications/Xcode.app/Contents/Developer/usr/llvm-gcc-4.2
+XCODE_LLVM="/usr/llvm-gcc-4.2"
+
+# Location of Xcode (4.4) Developer tools (usr/bin, usr/lib.
+SDKROOT="/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk"
+
+# TARGET_HOSTS is a space-separated list of the architectures
+# the compilers will run on.  For instance, "ppc i386".  If the
+# current machine isn't in the list, it will (effectively) be added.
+
+TARGET_HOSTS="i686 x86_64"
+
+# TARGET_ARCHS is a space-separated list of the architectures the
+# compilers will generate code for. 
+
+TARGET_ARCHS="i386 x86_64"
+
+
+
+
+###############################################################################
+#    HARDWARE DEPENDENT VARIABLES AND MACROS 
+#     You shouldn't need to change any of the following variables.
+#     They're just put here so they can be accessed from multiple files.
+###############################################################################
+
+# The current kernel version and system architecture.
+DARWIN_VERS=`uname -r | sed 's/\..*//'`
+
+# -arch arguments are different than configure arguments. We need to
+# translate them.
+TRANSLATE_ARCH="sed -e s/ppc/powerpc/ -e s/i386/i686/ -e s/armv6/arm/"
+OMIT_X86_64="sed -e s/x86_64//"
+
+GCC_BUILD="`arch | $TRANSLATE_ARCH`"
+GCC_HOSTS=`echo $TARGET_HOSTS | $TRANSLATE_ARCH`
+GCC_TARGETS=`echo $TARGET_ARCHS | $TRANSLATE_ARCH | $OMIT_X86_64 | sed -e s,\\',,g`  
+# (This to fix vim syntax highlighting:) \\'
+
+# Version and host info
+LLVM_VERSION_VERSION="`echo $LLVM_VERSION | sed -e 's|^[^\-]*\-||g'`"
+LLVM_VERSION_MAJOR="`echo $LLVM_VERSION_VERSION | sed -e 's|\..*$||'`"
+LLVM_VERSION_MINOR="`echo $LLVM_VERSION_VERSION | sed -e 's|^.*\.||'`"
+
+
+###############################################################################
