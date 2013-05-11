@@ -7,8 +7,10 @@
 # 4 - BUILD A CROSS-COMPILING GCC, WITH THE LLVM WE JUST USED
 #---------------------------------
 
-ORIG_DIR="${PWD}"
-SRC_DIR="${PWD}/${LLVM_VERSION}"
+SRC_DIR="${PWD}/${GCC_DIR}"
+
+GMP_DIR="${SRC_DIR}/gmp"
+MPFR_DIR="${SRC_DIR}/mpfr"
 
 # Fake install prefixes.
 BUILT_PREFIX="${PWD}/install${PREFIX}"
@@ -23,6 +25,7 @@ DSYMDIR="${BUILD_DIR}/debug"
 mkdir -p ${DSYMDIR}
 
 TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
+
 
 
 BUILD_CXX=0
@@ -72,32 +75,42 @@ fi
     #mv $SRC_DIR/libstdc++-v3 $SRC_DIR/libstdc++-v3.bak 2> /dev/null
 
     CFLAGS="-g -O2 ${RC_NONARCH_CFLAGS/-pipe/}"
-    CPPFLAGS="-I/usr/include -I$BUILT_PREFIX/include"
+    CPPFLAGS="-I/usr/include -I$BUILT_PREFIX/include -I$GMP_DIR -I$MPFR_DIR"
     CXXFLAGS=" -g -O2 -I/usr/include/c++/$VERS"
     NON_ARM_CONFIGFLAGS="--with-gxx-include-dir=/usr/include/c++/$VERS"
 
     CONFIGFLAGS="--disable-checking \
-      --enable-werror \
       --prefix=${PREFIX} \
       --mandir=${PREFIX}/share/man \
       --enable-languages=${LANGUAGES} \
       --program-transform-name=/^[cg][^.-]*$/s/$/-$MAJ_VERS/ \
       --with-slibdir=${PREFIX}/lib \
       --build=${TRIPLE} \
-      --enable-llvm=${SRC_DIR}/dst-llvm \
-      --with-gmp=${BUILT_PREFIX} \
-      --with-mpfr=${BUILT_PREFIX}"
+      --with-gmp=$GMP_DIR \
+      --with-mpfr=$MPFR_DIR"
+      #--enable-werror \
 
-    MAKEFLAGS="-j${N_MAKE} BUILD_LLVM_APPLE_STYLE=1"
+    if [ "$GNU_NEW" != "1" ] ; then # Apple's old GCC, v4.6.2
+        CONFIGFLAGS="$CONFIGFLAGS \
+            --enable-llvm=$SRC_DIR/dst-llvm"
+        MAKEFLAGS="-j${N_MAKE} BUILD_LLVM_APPLE_STYLE=1"
+        MAKEFLAGS="$MAKEFLAGS LLVM_VERSION_INFO=$LLVM_VERSION_VERSION"
+    else
+        CONFIGFLAGS="$CONFIGFLAGS \
+            --with-cloog=$BUILT_PREFIX \
+            --with-ppl=$BUILT_PREFIX"
+    fi
+
     #MAKEFLAGS="BUILD_LLVM_APPLE_STYLE=1"
     # Build llvm-gcc in 'dylib mode'.
     MAKEFLAGS="$MAKEFLAGS BUILD_LLVM_INTO_A_DYLIB=1 VERBOSE=1"
-    MAKEFLAGS="$MAKEFLAGS LLVM_VERSION_INFO=$LLVM_VERSION_VERSION"
 
     unset LANGUAGES
 
     # Patch gcc/fortran/ files with GCC-4.2.4 updates
-    patch -N -p1  < ./patch/gcc.fortran.diff
+    if [ "$GCC_DIR" = "$LLVM_VERSION" ] ; then 
+        patch -p1  < ./patch/gcc.fortran.diff
+    fi
 
     # Here, the build_gcc script compiles a native compiler. We'll skip that, 
     # and use Xcode compilers instead. No we won't. Need the llvm- prefix...
@@ -116,22 +129,27 @@ fi
     # because it'll be needed for the bootstrap.
     mkdir -p $BUILD_DIR/obj-$GCC_BUILD-$GCC_BUILD $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD || exit 1
     cd $BUILD_DIR/obj-$GCC_BUILD-$GCC_BUILD || exit 1
-    if [ \! -f Makefile ]; then
+#    if [ \! -f Makefile ]; then
+     echo -e "\nConfigurating llvm-compiler\n---------------------------\n"
      $SRC_DIR/configure $CONFIGFLAGS $NON_ARM_CONFIGFLAGS \
        --program-prefix=llvm- \
        --host=$GCC_BUILD-apple-darwin$DARWIN_VERS \
        --target=$GCC_BUILD-apple-darwin$DARWIN_VERS || exit 1
-    fi
+#    fi
 
     # Unset RC_DEBUG_OPTIONS because it causes the bootstrap to fail.
     # Also keep unset for cross compilers so that the cross built libraries are
     # comparable to the native built libraries.
     unset RC_DEBUG_OPTIONS
+    echo -e "\nMaking llvm-compiler\n--------------------\n"
     make $MAKEFLAGS CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 2
+    echo -e "\nMaking llvm-compiler's HTML\n---------------------------\n"
     make $MAKEFLAGS html CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 3
     #if [ ! -z "`which runtest`" ] ; then
     #    make $MAKEFLAGS check CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 3
     #fi
+    echo -e "\nInstalling llvm-compiler to $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD"
+    echo -e "----------------------------------------------------------------\n"
     make $MAKEFLAGS DESTDIR=$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD install-gcc install-target \
       CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" || exit 4
 
@@ -207,14 +225,14 @@ fi
 
     echo "Building cross-compilers for $CROSS_TARGETS"
     echo "-------------------------------------------"
-    # Build the cross-compilers, using the compiler we just built. 
+    # Build the cross-compilers, using [Xcode's compiler]
     for t in $CROSS_TARGETS ; do
      if [ $t != $GCC_BUILD ] ; then
       mkdir -p $BUILD_DIR/obj-$GCC_BUILD-$t $BUILD_DIR/dst-$GCC_BUILD-$t || exit 1
        cd $BUILD_DIR/obj-$GCC_BUILD-$t || exit 1
        if [ \! -f Makefile ]; then
         # APPLE LOCAL begin ARM ARM_CONFIGFLAGS
-        T_CONFIGFLAGS="$CONFIGFLAGS --enable-werror-always \
+        T_CONFIGFLAGS="$CONFIGFLAGS  \
           --program-prefix=$t-apple-darwin$DARWIN_VERS- \
           --host=$GCC_BUILD-apple-darwin$DARWIN_VERS \
           --target=$t-apple-darwin$DARWIN_VERS"
@@ -305,7 +323,7 @@ fi
 #            fi
 #          CC="gcc" CXX="g++" \
 #            CPPFLAGS="$CPPFLAGS" CFLAGS="$CFLAGS" \
-#            CFLAGS="-I/usr/include/c++/$VERS $CFLAGS" \
+            CFLAGS="-I/usr/include/c++/$VERS $CFLAGS" \
             $SRC_DIR/configure $T_CONFIGFLAGS || exit 20
         # APPLE LOCAL end ARM ARM_CONFIGFLAGS
           fi
@@ -341,7 +359,7 @@ fi
               echo "Making all-gcc for $BUILD_DIR/dst-$h-$t"
               echo -e "--------------------------------------------\n"
               make $MAKEFLAGS all-gcc CFLAGS="$CFLAGS -I/usr/include/c++/$VERS" CXXFLAGS="$CFLAGS"
-              if [ "$?" != "0" ] ; then 
+              if [ ! "$?" = "0" ] ; then 
                   echo Failed to run make $MAKEFLAGS all-gcc CFLAGS="$CFLAGS -I/usr/include/c++/$VERS" CXXFLAGS="$CFLAGS"
                   exit 1
               fi
@@ -450,15 +468,16 @@ fi
     # The fully-named drivers, which have the same target on every host.
     for t in $GCC_TARGETS ; do
       # LLVM LOCAL build_gcc bug with non-/usr $PREFIX
-      lipo -output $BUILT_PREFIX/bin/$t-apple-darwin$DARWIN_VERS-llvm-gcc-$MAJ_VERS -create \
+      lipo -output ./bin/$t-apple-darwin$DARWIN_VERS-llvm-gcc-$MAJ_VERS -create \
         $BUILD_DIR/dst-*-$t/$PREFIX/bin/$t-apple-darwin$DARWIN_VERS-gcc-$VERS || exit 1
-      lipo -output $BUILT_PREFIX/bin/$t-apple-darwin$DARWIN_VERS-llvm-gfortran-$MAJ_VERS -create \
-        $BUILD_DIR/dst-*-$t/$PREFIX/bin/$t-apple-darwin$DARWIN_VERS-*gfortran* || exit 1
       # LLVM LOCAL build_gcc bug with non-/usr $PREFIX
       if [ "$BUILD_CXX" = "1" ] ; then
-          lipo -output $BUILT_PREFIX/bin/$t-apple-darwin$DARWIN_VERS-llvm-g++-$MAJ_VERS -create \
+          lipo -output ./bin/$t-apple-darwin$DARWIN_VERS-llvm-g++-$MAJ_VERS -create \
             $BUILD_DIR/dst-*-$t/$PREFIX/bin/$t-apple-darwin$DARWIN_VERS-*g++* || exit 1
       fi
+      # ALBL build_gfortran
+      lipo -output ./bin/$t-apple-darwin$DARWIN_VERS-llvm-gfortran-$MAJ_VERS -create \
+        $BUILD_DIR/dst-*-$t/$PREFIX/bin/$t-apple-darwin$DARWIN_VERS-*gfortran* || exit 1
     done
 
     # lib
@@ -483,13 +502,24 @@ fi
         if [ -f $baselibdir/$f -a -f $baselib64dir/$f ] ; then
             lipo -output $BUILT_PREFIX/lib/$f -create \
                 $baselibdir/$f $baselib64dir/$f || exit 1
+#            install_name_tool -change ${BUILT_PREFIX}/lib/x86_64/$f \
+#                ${PREFIX}/lib/$f $BUILT_PREFIX/lib/$f || exit 1
+#            rm $baselibdir/$f $baselib64dir/$f
         elif [ -f $libdir/$f -a -f $lib64dir/$f ] ; then
             lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f -create \
                 $libdir/$f $lib64dir/$f || exit 1
+#            install_name_tool -change ${BUILT_PREFIX}/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/x86_64/$f \
+#                ${PREFIX}/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f \
+#                $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f || exit 1
+#            rm $libdir/$f $lib64dir/$f
         else
             echo "Don't have 64bit version of $f in $baselib64dir or $lib64dir !!"
             cp -p $libdir/$f \
                 $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f || exit 1
+#            install_name_tool -change ${BUILT_PREFIX}/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/x86_64/$f \
+#                ${PREFIX}/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f \
+#                $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$f || exit 1
+#            rm $libdir/$f
         fi
     done
 
@@ -522,7 +552,7 @@ fi
         $BUILD_DIR/dst-$GCC_BUILD-*/usr/local/lib/gcc/*-apple-darwin$DARWIN_VERS/$VERS/crt3.o || exit 1
         #$BUILD_DIR/dst-$GCC_BUILD-x86_64/usr/local/lib/gcc/x86_64-apple-darwin12/4.2.1/crt3.o
 
-    echo "libgfortranbegin.dylib"
+    echo "Copying over dylibs (libgfortran.dylib & libgfortranbegin.dylib)"
     echo -e "-------------------\n"
 
     # Merge libgfortran and libgfortranbegin with lipo, then delete individuals.
@@ -530,24 +560,19 @@ fi
         libbeginversion="`grep dlname $libdir/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
         libbeginaltnames="`grep library_names $libdir/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$// -e s/$libbeginversion//`"
         if [ ! -z "$libbeginversion" -a -d $libdir/x86_64 -a -f $libdir/x86_64/libgfortranbegin.la ] ; then
-            libbeginversion64="/x86_64/`grep dlname $libdir/x86_64/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
-            #libbegins="$libdir/$libbeginversion $libbeginversion64"
-            echo strip -u -x $libdir/$libbeginversion -o $libdir/${libbeginversion}_T
-            echo strip -u -x $libdir/$libbeginversion -o $libdir/${libbeginversion}_T
-            strip -u -x $libdir/$libbeginversion -o $libdir/${libbeginversion}_T || exit 1
-            strip -u -x $libdir/$libbeginversion64 -o $libdir/${libbeginversion64}_T || exit 1
-            echo lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libbeginversion \
-                -create $libdir/${libbeginversion}_T $libdir/${libbeginversion64}_T
+            libbeginversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortranbegin.la | sed -e s/^.*=\'// -e s/\'$//`"
+            libbegins="$libdir/$libbeginversion $libbeginversion64"
+            echo running lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libbeginversion \
+                -create $libbegins
             lipo -output $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/$libbeginversion \
-                -create $libdir/${libbeginversion}_T $libdir/${libbeginversion64}_T
+                -create $libbegins || exit 1
             cp $libdir/libgfortranbegin.la $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS/
             # link alternative libgfortranbegin names
             cd $BUILT_PREFIX/lib/gcc/$GCC_BUILD-apple-darwin$DARWIN_VERS/$VERS
             for f in $libbeginaltnames ; do ln -s $libbeginversion $f ; done
         fi
 
-    echo "libgfortran.dylib"
-    echo -e "----------------\n"
+
     # $baselibdir 
         # libgfortran
         cd $BUILT_PREFIX/lib
@@ -563,36 +588,30 @@ fi
         if [ -d $libdir/x86_64 -a -f $libdir/x86_64/libgfortran.la ] ; then
             libgfortversion64="$libdir/x86_64/`grep dlname $libdir/x86_64/libgfortran.la | sed -e s/^.*=\'// -e s/\'$//`"
         fi
-        echo strip -u -x $libdir/$libgfortversion -o $libdir/${libgfortversion}_T
-        echo strip -u -x $libgfortversion64 -o ${libgfortversion64}_T
-        strip -u -x $libdir/$libgfortversion -o $libdir/${libgfortversion}_T   || exit 1
-        strip -u -x $libgfortversion64 -o ${libgfortversion64}_T || exit 1
+        libgforts="$libdir/$libgfortversion $libgfortversion64"
         echo running lipo -output $BUILT_PREFIX/lib/$libgfortversion \
-            -create $libdir/${libgfortversion}_T  ${libgfortversion64}_T
+            -create $libgforts 
         lipo -output $BUILT_PREFIX/lib/$libgfortversion \
-            -create $libdir/${libgfortversion}_T  ${libgfortversion64}_T || exit 1
-        rm $libdir/*_T
+            -create $libgforts || exit 1
         install_name_tool -id "${PREFIX}/lib/$libgfortversion" \
             -change "${PREFIX}/lib/x86_64/$libgfortversion" "${PREFIX}/lib/$libgfortversion" \
             "${BUILT_PREFIX}/lib/$libgfortversion" || exit 1
         # link alternatives
         for f in $libgfortaltnames ; do ln -s $libgfortversion $f ; done
 
-        # libgcc_s.1.dylib
-        # This was already built with universal architectures, by the native build.
-        # As per the libgcc_* files in /usr/lib, I did just create libgcc_s.10.5.dylib, 
+        # libgcc_s.1.dylib, libgcc_s.10.4.dylib, libgcc_s.10.5.dylib, 
+        # These have already been built with universal architectures...
+        # As per the libgcc_* files in /usr/lib, we'll just create libgcc_s.10.5.dylib, 
         #  and link the rest to /usr/lib/libSystem.B.dylib
-        # But no, not a great idea, I don't think... The gfortran build might
-        # have more symbols, or not. But something doesn't work properly with this.
-        f=libgcc_s.1.dylib
+        f=libgcc_s.10.5.dylib
         lipo -output $BUILT_PREFIX/lib/$f -create \
             $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/lib/$f \
             $BUILD_DIR/dst-$GCC_BUILD-x86_64$PREFIX/lib/$f    || cp -vp \
             $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/lib/$f \
             $BUILT_PREFIX/lib/$f 
-        #ln -sf /usr/lib/libSystem.B.dylib $BUILT_PREFIX/lib/libgcc_s.1.dylib
-        #cd $BUILD_PREFIX/lib
-        #ln -sf libgcc_s.10.5.dylib libgcc_s.10.4.dylib
+        ln -sf /usr/lib/libSystem.B.dylib $BUILT_PREFIX/lib/libgcc_s.1.dylib
+        cd $BUILD_PREFIX/lib
+        ln -sf libgcc_s.10.5.dylib libgcc_s.10.4.dylib
 
     # Surely this would overwrite any previous architecture builds in ${BUILT_PREFIX}/lib/gcc.
 #    for t in $GCC_TARGETS ; do
@@ -618,19 +637,9 @@ fi
     cp -vp "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/libgomp.la"   "$BUILT_PREFIX/$libdir/" || exit 1
     cp -vp "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/libgomp.spec" "$BUILT_PREFIX/$libdir/" || exit 1
     # dylib
-    echo strip -x $BUILD_DIR/libgcc_s.dylib.full -o $BUILD_DIR/libgcc_s.dylib \
-        -o "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/${PREFIX}/$libdir/${libgompversion}_T" 
-    strip -x "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/${PREFIX}/$libdir/$libgompversion" \
-        -o "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/${PREFIX}/$libdir/${libgompversion}_T" || exit 1
-
-    echo strip -x "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/x86_64/$libgompversion" \
-         -o "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFFIX/$libdir/x86_64/${libgompversion}_T"
-    strip -x "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/x86_64/$libgompversion" \
-         -o "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/x86_64/${libgompversion}_T" || exit 1
-
     lipo -output "${BUILT_PREFIX}/$libdir/$libgompversion" -create \
-        "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/${libgompversion}_T" \
-        "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/x86_64/${libgompversion}_T" || exit 1
+        "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/$libgompversion" \
+        "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/x86_64/$libgompversion" || exit 1
     install_name_tool -id "$PREFIX/$libdir/$libgompversion" -change \
         "$PREFIX/$libdir/x86_64/$libgompversion" "$PREFIX/$libdir/$libgompversion" \
         "${BUILT_PREFIX}/$libdir/$libgompversion" || exit 1
@@ -638,84 +647,10 @@ fi
     for f in $libgompaltnames ; do
         ln -s $libgompversion $f
     done
-    # libgomp archive
-    echo -e strip -x "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/libgomp.a" \
-        -o "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/libgomp.a_T\n"
-    strip -x "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/libgomp.a" \
-        -o "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/libgomp.a_T"
-
-    echo strip -x "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/x86_64/libgomp.a" \
-        -o "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/x86_64/libgomp.a_T"
-    strip -x "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/x86_64/libgomp.a" \
-        -o "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/x86_64/libgomp.a_T"
-
+    # archive
     lipo -output "${BUILT_PREFIX}/$libdir/libgomp.a" -create \
-        "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/libgomp.a_T" \
-        "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/x86_64/libgomp.a_T" || exit 1
-
-    rm $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/**/*_T
-
-    # Got this from llvm.../gcc/config/t-slibgcc-darwin
-    # Building two versions of libgcc_s.10.x.dylib
-    # This is not what we want....
-
-#        MLIBS=`gcc --print-multi-lib \
-#            | sed -e 's/;.*$//' -e '/^\.$/d'` ; \
-#        for mlib in '' $MLIBS ; do \
-#
-#          for v in 10.4 10.5; do
-#              strip -o libgcc_s._T${mlib} \
-#                -s libgcc_s.${v}.dSYM -c -u \
-#                $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/lib/${mlib}/libgcc_s.1.dylib.tmp || exit 1 ; \
-#              lipo -output libgcc_s.${v}_T.dylib -create $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/lib/${mlib}/libgcc_s.${v}_T*
-#          done
-#
-#          cp $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/lib/${mlib}/libgcc_s.1.dylib.tmp \
-#            ./libgcc_s.1.dylib_T_${mlib} || exit 1 ; \
-#          rm $BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD$PREFIX/lib/${mlib}/libgcc_s.{$v}_T*
-#
-#        done
-#
-#        lipo -output $BUILT_PREFIX/lib/libgcc_s.1.dylib \
-#          -create ./libgcc_s.1.dylib_T*
-#        rm ./libgcc_s.1.dylib_T*
-#
-    ## Instead, we'll use the code from the libgcc Makefile, at:-
-    #    http://www.opensource.apple.com/tarballs/libgcc/libgcc-13.tar.gz
-
-    # How to choose the version??? let's just use current version of the system
-    # library and add 1.
-    cd ${ORIG_DIR}
-    CurrentVersion=`otool -L /usr/lib/libgcc_s.10.5.dylib | grep 'current version' | sed 's/^.*current version \([\.0-9]*\).*$/\1/'`
-    RC_ProjectBuildVersion=$(( `echo $CurrentVersion | sed 's/\..*$//'` + 1 ))
-    RC_ProjectBuildVersion="${RC_ProjectBuildVersion}.0.0"
-    echo "Downloading libgcc-13.tar.gz from opensource.apple.com"
-    echo "------------------------------------------------------"
-    if [ ! -d libgcc-13 ] ; then
-        curl -OL 'http://www.opensource.apple.com/tarballs/libgcc/libgcc-13.tar.gz' || exit 1
-        tar xzf libgcc-13.tar.gz
-        rm libgcc-13.tar.gz
-    fi
-
-    # Found a few new symbols in libgcc_s.1.dylib. Thought I'd add them torthe stub.
-    patch -N libgcc-13/stub.c < patch/libgcc-13.stub.c.diff 
-
-    echo /usr/bin/gcc -arch i386 -arch x86_64 libgcc-13/stub.c -dynamiclib -install_name $PREFIX/lib/libgcc_s.1.dylib \
-        -compatibility_version 1 -current_version ${RC_ProjectBuildVersion} \
-        -nostdlib -o $BUILD_DIR/libgcc_s.dylib.full 
-    echo 
-
-    /usr/bin/gcc -arch i386 -arch x86_64 libgcc-13/stub.c -dynamiclib -install_name $PREFIX/lib/libgcc_s.1.dylib \
-        -compatibility_version 1 -current_version ${RC_ProjectBuildVersion} \
-        -nostdlib -o $BUILD_DIR/libgcc_s.dylib.full || exit 1
-
-    echo strip -c -x $BUILD_DIR/libgcc_s.dylib.full -o $BUILD_DIR/libgcc_s.dylib
-    strip -c -u -x $BUILD_DIR/libgcc_s.dylib.full -o $BUILD_DIR/libgcc_s.dylib || exit 1
-
-    cp $BUILD_DIR/libgcc_s.dylib $BUILT_PREFIX/lib/libgcc_s.10.5.dylib
-    rm $BUILD_DIR/libgcc_s.dylib*
-    cd $BUILT_PREFIX/lib
-    ln -s libgcc_s.10.5.dylib libgcc_s.10.4.dylib
+        "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/libgomp.a" \
+        "$BUILD_DIR/dst-$GCC_BUILD-$GCC_BUILD/$PREFIX/$libdir/x86_64/libgomp.a" || exit 1
 
     echo -e "Done libs\n---------"
 

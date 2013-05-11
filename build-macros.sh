@@ -2,6 +2,7 @@
 
 # Convenience functions
 #==================================
+. CONFIG
 
 # Run the given arguments as a program. 
 #  If the program returns an error code,
