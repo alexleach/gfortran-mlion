@@ -20,7 +20,7 @@ PREFIX="/usr/local"
 # Versions for download.
 #======================
 # Packages will be downloaded from:-
-#    ftp://ftp.gmplib.org/pub/gmp-<GMP_VERSION>/gmp-<GMP_VERSION>.tar.gz
+#    ftp://ftp.gmplib.org/pub/gmp-<GMP_VERSION>/gmp-<GMP_VERSION>.tar.xz
 #    http://www.mpfr.org/mpfr-<MPFR_VERSION>/mpfr-<MPFR_VERSION>.tar.gz"
 #    http://opensource.apple.com/tarballs/llvmgcc42/<LLVM_VERSION>.tar.gz
 
@@ -74,7 +74,7 @@ TRANSLATE_ARCH="sed -e s/ppc/powerpc/ -e s/i386/i686/ -e s/armv6/arm/"
 OMIT_X86_64="sed -e s/x86_64//"
 
 GCC_BUILD="`arch | $TRANSLATE_ARCH`"
-GCC_HOSTS=`echo $TARGET_HOSTS | $TRANSLATE_ARCH`
+GCC_HOSTS=`echo $TARGET_ARCHS | $TRANSLATE_ARCH`
 GCC_TARGETS=`echo $TARGET_ARCHS | $TRANSLATE_ARCH | $OMIT_X86_64 | sed -e s,\\',,g`  
 # (This to fix vim syntax highlighting:) \\'
 
@@ -82,6 +82,14 @@ GCC_TARGETS=`echo $TARGET_ARCHS | $TRANSLATE_ARCH | $OMIT_X86_64 | sed -e s,\\',
 LLVM_VERSION_VERSION="`echo $LLVM_VERSION | sed -e 's|^[^\-]*\-||g'`"
 LLVM_VERSION_MAJOR="`echo $LLVM_VERSION_VERSION | sed -e 's|\..*$||'`"
 LLVM_VERSION_MINOR="`echo $LLVM_VERSION_VERSION | sed -e 's|^.*\.||'`"
+# (This to fix vim syntax highlighting:) \\'
 
 
 ###############################################################################
+# Print variables if CONFIG is run directly.
+
+if [ "$0" = "./CONFIG" ] ; then
+    echo GCC_BUILD: $GCC_BUILD
+    echo GCC_HOSTS: $GCC_HOSTS
+    echo GCC_TARGETS: $GCC_TARGETS
+fi

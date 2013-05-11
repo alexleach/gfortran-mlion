@@ -13,12 +13,12 @@
     # a. Download
     #----------------------------------
 
-    GMP_ARCHIVE="gmp-${GMP_VERSION}.tar.gz"
+    GMP_ARCHIVE="gmp-${GMP_VERSION}.tar.xz"
 
     if [ ! -e "gmp-${GMP_VERSION}" ] ; then 
         echo "Downloading ${GMP_ARCHIVE} from ftp://ftp.gmplib.org/pub/gmp-${GMP_VERSION}/"
         run curl -OL ftp://ftp.gmplib.org/pub/gmp-${GMP_VERSION}/${GMP_ARCHIVE} 
-        run tar xzf ${GMP_ARCHIVE}
+        run tar xJf ${GMP_ARCHIVE}
         run rm ${GMP_ARCHIVE}
     fi
 
@@ -31,7 +31,7 @@
     BUILT_PREFIX="${PWD}/install/usr/local"
     mkdir -p $BUILT_PREFIX/lib $BUILT_PREFIX/include $BUILT_PREFIX/bin $BUILT_PREFIX/share
 
-    TRIPLE="${BUILD_ARCH}-apple-darwin${DARWIN_VERS}"
+    TRIPLE="${GCC_BUILD}-apple-darwin${DARWIN_VERS}"
 
     # b. Build i386 binary
     #----------------------------------
@@ -54,6 +54,7 @@
             FFLAGS="-arch i386" \
             ../configure \
                 --enable-werror \
+                --enable-cxx \
                 --prefix=${PREFIX} \
                 --build=i686-apple-darwin$DARWIN_VERS \
                 --host=i686-apple-darwin$DARWIN_VERS \
@@ -85,6 +86,7 @@
             FFLAGS="-arch x86_64" \
             ../configure \
                 --enable-werror \
+                --enable-cxx \
                 --prefix=${PREFIX} \
                 --build=$TRIPLE \
                 --host=x86_64-apple-darwin$DARWIN_VERS \
