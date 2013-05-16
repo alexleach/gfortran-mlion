@@ -12,13 +12,13 @@
 
     # a. Download
     #----------------------------------
+    echo "GMP"
 
-    GMP_ARCHIVE="gmp-${GMP_VERSION}.tar.xz"
-
+    GMP_ARCHIVE="gmp-${GMP_VERSION}.tar.bz2" 
     if [ ! -e "gmp-${GMP_VERSION}" ] ; then 
         echo "Downloading ${GMP_ARCHIVE} from ftp://ftp.gmplib.org/pub/gmp-${GMP_VERSION}/"
         run curl -OL ftp://ftp.gmplib.org/pub/gmp-${GMP_VERSION}/${GMP_ARCHIVE} 
-        run tar xJf ${GMP_ARCHIVE}
+        run tar xjf ${GMP_ARCHIVE}
         run rm ${GMP_ARCHIVE}
     fi
 
