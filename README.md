@@ -4,10 +4,7 @@
 
 ==============================================================================
 
-This is the README for gfortran-mlion, shared for your convenience, at 
-    https://github.com/alexleach/gfortran-mlion
-
-==============================================================================
+##### This is the README for gfortran-mlion
 
 
 ## PROJECT DESCRIPTION
@@ -21,14 +18,10 @@ version of llvm-gfortran-4.2.
 For more info, see my stackoverflow question at:
      http://stackoverflow.com/questions/12316780
 
-This is currently a work in progress, as I'm still learning about Apple's
-nuances.
-
-The goal then, (for me) is to get this script to build a universal binary
+The goal then, for this script, is to build a universal binary
 (i386, x86\_64) of llvm-gfortran-4.2. I am unable to test or compile a
 powerpc compatible version, as I don't have the necessary hardware, or
-software, with which to do so. If anyone wants to help with that, please
-get in touch!
+software, with which to do so.
 
 Any comments, help or feedback are completely welcome, at:-
     beamesleach <at> gmail <dot> com
@@ -36,10 +29,25 @@ Any comments, help or feedback are completely welcome, at:-
 
 ## PACKAGE CONTENTS
 
-This project contains the following files:-
-    CONFIG
-    build-gfortran.sh 
-    patch/gmp.h.patch
+This project contains the following files that should be of interest:-
+
+  - CONFIG
+  - build-gfortran.sh
+
+The rest of the files in the package do all the work of downloading,
+building and installing `gfortran` and its dependencies:-
+
+  - build-deps.sh
+  - build-gcc.sh
+  - build-llvmgcc.sh
+  - build-macros.sh
+  - install-gfortran.sh
+
+The following patches include all the source code modifications that need
+to be applied:-
+
+  - patch/gmp.h.patch
+  - patch/gcc.fortran.diff
 
 ## File Descriptions
 
@@ -65,7 +73,7 @@ need to run [`install-gfortran.sh`][install-gfortran.sh] as the root user, after
 has finished building everything.
 
 
-### TODO
+## TODO
 
 * 10th Sep 2012
 
