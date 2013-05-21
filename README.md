@@ -1,11 +1,13 @@
 # gfortran-mlion
 
-### Automated build system for gfortran, on Apple OSX.
+#### Automated build system for gfortran, on Apple OSX.
+
+==============================================================================
 
 This is the README for gfortran-mlion, shared for your convenience, at 
     https://github.com/alexleach/gfortran-mlion
 
-------------------------------------------------------------------------------
+==============================================================================
 
 
 ## PROJECT DESCRIPTION
@@ -41,14 +43,14 @@ This project contains the following files:-
 
 ## File Descriptions
 
-### CONFIG
+### [CONFIG]
 
 Any easily customisable configuration settings, like installation prefix,
 have been put into this file. The file is read as a bash script by
 build-gfortran.sh
 
 
-### build-gfortran.sh
+### [build-gfortran.sh]
 
 This does everything. Just run it from the command line, and this will 
 download, build and install everything you need for a working fortran 
@@ -57,7 +59,10 @@ compiler on your system.
 
 ### Anything else.
 
-Don't worry about it, `build-gfortran.sh` should do all the work for you.
+Don't worry about them, `build-gfortran.sh` should do all the work for you.
+However, if you're installing somewhere you need root privileges, then you'll
+need to run [`install-gfortran.sh`][install-gfortran.sh] as the root user, after `build-gfortran.sh`
+has finished building everything.
 
 
 ### TODO
@@ -78,4 +83,6 @@ Don't worry about it, `build-gfortran.sh` should do all the work for you.
     pressing engagements. I've commited the work I've done in upgrading it to
     a the #gcc-4.7.2 branch, however. Contributions would be welcome!
 
-
+[build-gfortran.sh]: ./build-gfortran.sh
+[CONFIG]: ./CONFIG
+[install-gfortran.sh]: ./install-gfortran.sh
